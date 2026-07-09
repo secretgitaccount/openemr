@@ -1,0 +1,18 @@
+# Keep the build context (and Railway upload) small and secret-free.
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.git/
+.gitignore
+# secrets — never ship into the image/context
+.env
+.env.*
+!.env.example
+.oauth_client.json
+# not needed at runtime
+tests/
+.agents/
+*.log
