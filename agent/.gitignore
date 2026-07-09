@@ -1,0 +1,10 @@
+.venv/
+.env
+.oauth_client.json
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
