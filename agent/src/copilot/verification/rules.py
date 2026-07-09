@@ -20,8 +20,20 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from copilot.schemas.clinical import Allergy, CriticalSet, Medication
 from copilot.schemas.core import SourceRef
+from copilot.verification.knowledge import (
+    canonical_classes,
+    find_interaction,
+    DOSAGE_CEILINGS,
+    parse_daily_mg,
+)
 
-__all__ = ["RuleFlag", "check_allergy_contraindications"]
+__all__ = [
+    "RuleFlag",
+    "check_allergy_contraindications",
+    "check_drug_interactions",
+    "check_dosage_thresholds",
+    "run_all_rules",
+]
 
 
 class RuleFlag(BaseModel):
@@ -165,3 +177,114 @@ def check_allergy_contraindications(critical_set: CriticalSet) -> list[RuleFlag]
                 )
             )
     return flags
+
+
+# ---------------------------------------------------------------------------
+# Drug-drug interaction rule
+# ---------------------------------------------------------------------------
+
+
+def _active_meds(critical_set: CriticalSet) -> list[Medication]:
+    """Active medications only; a stopped med is not a live hazard."""
+
+    return [m for m in critical_set.medications if m.status.strip().lower() == "active"]
+
+
+def check_drug_interactions(critical_set: CriticalSet) -> list[RuleFlag]:
+    """Flag interacting pairs among the active medications (FR-9, UC-4).
+
+    Cross-products every pair of active meds against the demo-scale interaction
+    table in :mod:`copilot.verification.knowledge`. Each match yields one
+    :class:`RuleFlag` grounded in **both** medications' source records, so the
+    danger surfaces from the retrieved data whether or not the model mentioned
+    it. Deterministic: meds are compared in list order and each unordered pair
+    is considered once.
+    """
+
+    meds = _active_meds(critical_set)
+    classes = [canonical_classes(m.name) for m in meds]
+
+    flags: list[RuleFlag] = []
+    for i in range(len(meds)):
+        for j in range(i + 1, len(meds)):
+            interaction = find_interaction(classes[i], classes[j])
+            if interaction is None:
+                continue
+            flags.append(
+                RuleFlag(
+                    rule="drug_interaction",
+                    severity=interaction.severity,
+                    message=(
+                        f"Potential interaction between '{meds[i].name}' and "
+                        f"'{meds[j].name}': {interaction.description}"
+                    ),
+                    sources=[meds[i].source, meds[j].source],
+                )
+            )
+    return flags
+
+
+# ---------------------------------------------------------------------------
+# Dosage-threshold rule
+# ---------------------------------------------------------------------------
+
+
+def check_dosage_thresholds(critical_set: CriticalSet) -> list[RuleFlag]:
+    """Flag active medications dosed above their maximum daily ceiling (FR-9).
+
+    Parses each active med's ``dosage`` into a total milligrams-per-day and
+    compares it to the per-drug ceiling in
+    :mod:`copilot.verification.knowledge`. Meds whose dosage cannot be parsed
+    (missing, no milligram amount, unrecognized) are **skipped** rather than
+    flagged, so an unparseable dose never becomes a false positive. Each flag is
+    grounded in the medication's own source record.
+    """
+
+    flags: list[RuleFlag] = []
+    for med in _active_meds(critical_set):
+        name = med.name.lower()
+        for ceiling in DOSAGE_CEILINGS:
+            if not any(syn in name for syn in ceiling.synonyms):
+                continue
+            daily_mg = parse_daily_mg(med.dosage)
+            if daily_mg is None or daily_mg <= ceiling.max_mg_per_day:
+                continue
+            flags.append(
+                RuleFlag(
+                    rule="dosage_threshold",
+                    severity="high",
+                    message=(
+                        f"Medication '{med.name}' appears dosed at "
+                        f"{daily_mg:g} mg/day, above the {ceiling.max_mg_per_day:g} "
+                        f"mg/day maximum for {ceiling.drug}."
+                    ),
+                    sources=[med.source],
+                )
+            )
+            break
+    return flags
+
+
+# ---------------------------------------------------------------------------
+# Aggregate
+# ---------------------------------------------------------------------------
+
+#: Rank for deterministic severity ordering (lower sorts first).
+_SEVERITY_RANK: dict[str, int] = {"high": 0, "medium": 1, "low": 2}
+
+
+def run_all_rules(critical_set: CriticalSet) -> list[RuleFlag]:
+    """Run every deterministic safety rule over the retrieved data (FR-9).
+
+    Unions the allergy-contraindication, drug-interaction, and dosage-threshold
+    findings and returns them ordered by severity (``high`` first). The sort is
+    stable, so within a severity the flags keep their rule-by-rule order,
+    keeping the result deterministic for the same input.
+    """
+
+    flags = [
+        *check_allergy_contraindications(critical_set),
+        *check_drug_interactions(critical_set),
+        *check_dosage_thresholds(critical_set),
+    ]
+    return sorted(flags, key=lambda f: _SEVERITY_RANK.get(f.severity, len(_SEVERITY_RANK)))

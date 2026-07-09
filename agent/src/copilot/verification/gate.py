@@ -25,7 +25,7 @@ from copilot.observability import record_verification, trace
 from copilot.schemas.clinical import CriticalSet
 from copilot.schemas.core import SourceRef
 from copilot.schemas.output import Claim, GroundedSummary
-from copilot.verification.rules import RuleFlag, check_allergy_contraindications
+from copilot.verification.rules import RuleFlag, run_all_rules
 
 __all__ = ["VerifiedSummary", "verify"]
 
@@ -120,7 +120,7 @@ def verify(summary: GroundedSummary, critical_set: CriticalSet) -> VerifiedSumma
             update={"must_knows": kept_must, "whats_changed": kept_changed}
         )
 
-        flags = check_allergy_contraindications(critical_set)
+        flags = run_all_rules(critical_set)
 
         passed = not dropped
         counts = {
