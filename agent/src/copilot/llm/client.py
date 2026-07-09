@@ -397,7 +397,7 @@ class LLMClient:
         payload = build_payload(critical_set, deltas)
         client = self._anthropic()
 
-        with trace("llm.summarize", metadata={"model": self._model}) as span:
+        with trace("llm.summarize", as_type="generation", metadata={"model": self._model}) as span:
             message = await self._call(
                 client, payload, system=SYSTEM_PROMPT, output_format=GroundedSummary
             )
@@ -420,13 +420,16 @@ class LLMClient:
 
             usage = message.usage
             span.update(
+                model=self._model,
+                usage_details={
+                    "input": getattr(usage, "input_tokens", 0),
+                    "output": getattr(usage, "output_tokens", 0),
+                },
                 metadata={
                     "model": self._model,
-                    "input_tokens": getattr(usage, "input_tokens", None),
-                    "output_tokens": getattr(usage, "output_tokens", None),
                     "must_knows": len(summary.must_knows),
                     "whats_changed": len(summary.whats_changed),
-                }
+                },
             )
             return summary
 
@@ -456,7 +459,7 @@ class LLMClient:
         payload = build_followup_payload(question, history, critical_set, deltas)
         client = self._anthropic()
 
-        with trace("llm.followup", metadata={"model": self._model}) as span:
+        with trace("llm.followup", as_type="generation", metadata={"model": self._model}) as span:
             message = await self._call(
                 client, payload, system=FOLLOWUP_SYSTEM_PROMPT, output_format=GroundedAnswer
             )
@@ -479,13 +482,16 @@ class LLMClient:
 
             usage = message.usage
             span.update(
+                model=self._model,
+                usage_details={
+                    "input": getattr(usage, "input_tokens", 0),
+                    "output": getattr(usage, "output_tokens", 0),
+                },
                 metadata={
                     "model": self._model,
-                    "input_tokens": getattr(usage, "input_tokens", None),
-                    "output_tokens": getattr(usage, "output_tokens", None),
                     "answer_claims": len(answer.answer),
                     "turns": len(history),
-                }
+                },
             )
             return answer
 
