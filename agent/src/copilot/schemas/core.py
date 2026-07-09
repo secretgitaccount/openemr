@@ -99,3 +99,7 @@ class ToolResult(BaseModel, Generic[T]):
         default_factory=list,
         description="Names of the pieces that could not be retrieved.",
     )
+    total_available: int | None = Field(
+        default=None,
+        description="Total records available upstream before any capping/bounding; None when not applicable.",
+    )

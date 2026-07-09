@@ -77,6 +77,10 @@
   .card.caveats .banner { background: #fff; color: var(--muted); border-bottom: 1px solid var(--line); }
   .caveats ul { margin: 0; padding-left: 18px; color: #384150; font-size: 13.5px; }
   .caveats li { margin: 7px 0; }
+  .caveats li.lab-overflow { list-style: none; margin: 0 0 12px -18px; padding: 10px 12px;
+        background: #eef6f7; border: 1px solid #bcdadd; border-radius: 8px; color: #234150; font-size: 13.5px; }
+  .overflow-link { color: var(--accent); font-weight: 700; cursor: pointer; }
+  .overflow-link:hover { text-decoration: underline; }
   .asof { color: var(--muted); font-size: 12.5px; margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 10px; }
   .notice { color: var(--flag-ink); font-size: 13px; margin-top: 6px; }
 
@@ -250,16 +254,18 @@ function hideAll() {
     .forEach((id) => $(id).classList.add("hidden"));
 }
 
-async function openChart() {
+async function openChart(fullLabs = false) {
   const pid = $("patient").value;
   if (!pid || loading) return;
   loading = true; $("load").disabled = true;
   hideAll();
   conversationId = null; $("chatlog").innerHTML = "";
   const sum = $("summaryCard"); sum.classList.remove("hidden");
-  $("headline").innerHTML = '<span class="thinking">Retrieving chart and synthesising a grounded summary…</span>';
+  $("headline").innerHTML = '<span class="thinking">' +
+    (fullLabs ? "Re-analysing the full lab history — this takes longer…"
+              : "Retrieving chart and synthesising a grounded summary…") + "</span>";
 
-  const p = { headline: null, must: [], changed: [], flags: [], caveats: [], notices: [], asOf: null, refused: null };
+  const p = { headline: null, must: [], changed: [], flags: [], caveats: [], notices: [], asOf: null, refused: null, overflow: null };
   const render = () => {
     if (p.refused) {
       hideAll();
@@ -280,9 +286,23 @@ async function openChart() {
     }
     if (p.must.length) { $("mustCard").classList.remove("hidden"); renderClaims($("mustBody"), p.must, MUST_KNOWS_INITIAL); }
     if (p.changed.length) { $("changesCard").classList.remove("hidden"); renderClaims($("changesBody"), p.changed, CHANGES_INITIAL); }
-    if (p.caveats.length || p.asOf || p.notices.length) {
+    if (p.overflow || p.caveats.length || p.asOf || p.notices.length) {
       $("caveatsCard").classList.remove("hidden");
       const ul = $("caveatsBody"); ul.innerHTML = "";
+      if (p.overflow) {
+        const li = document.createElement("li");
+        li.className = "lab-overflow";
+        li.innerHTML = "<strong>This patient has a large lab history.</strong> " +
+          p.overflow.toLocaleString() +
+          " older lab records are not analysed here — only the most recent per test, plus any abnormal. " +
+          "In the rare case older values are needed, ";
+        const a = document.createElement("a");
+        a.href = "#"; a.className = "overflow-link";
+        a.textContent = "click here to reload with the full history analysed";
+        a.onclick = (e) => { e.preventDefault(); openChart(true); };
+        li.appendChild(a); li.appendChild(document.createTextNode("."));
+        ul.appendChild(li);
+      }
       p.caveats.forEach((c) => { const li = document.createElement("li"); li.textContent = c; ul.appendChild(li); });
       $("asof").textContent = p.asOf ? "Data as of " + p.asOf : "";
       const n = $("notices"); n.innerHTML = "";
@@ -291,7 +311,8 @@ async function openChart() {
   };
 
   try {
-    const resp = await fetch(`/patients/${encodeURIComponent(pid)}/conversation`, {
+    const url = `/patients/${encodeURIComponent(pid)}/conversation` + (fullLabs ? "?full_labs=true" : "");
+    const resp = await fetch(url, {
       method: "POST", headers: { "X-Break-Glass-Reason": BREAK_GLASS_REASON },
     });
     await streamNDJSON(resp, (ev) => {
@@ -304,6 +325,7 @@ async function openChart() {
         case "caveat": p.caveats.push(ev.text); break;
         case "notice": p.notices.push(ev.text); break;
         case "data_as_of": p.asOf = ev.timestamp; break;
+        case "lab_overflow": p.overflow = ev.omitted; break;
         case "conversation": conversationId = ev.conversation_id; break;
       }
       render();
