@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Clinical Co-Pilot</title>
+<style>
+  :root {
+    --bg: #f6f8fa; --panel: #ffffff; --ink: #1c2330; --muted: #5b6675;
+    --line: #e3e8ee; --accent: #0e7c86; --accent-ink: #0b5a61;
+    --flag-bg: #fff6ed; --flag-line: #f0b37e; --flag-ink: #9a4a00;
+    --refuse-bg: #fdeef0; --refuse-line: #e2a3ab; --refuse-ink: #8a2733;
+    --chip-bg: #eef4f5; --chip-ink: #0b5a61;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  header { background: var(--panel); border-bottom: 1px solid var(--line); padding: 14px 22px;
+           display: flex; align-items: center; gap: 14px; position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 17px; margin: 0; letter-spacing: .2px; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header .who { margin-left: auto; font-size: 13px; color: var(--muted);
+                background: var(--chip-bg); color: var(--chip-ink); padding: 4px 10px; border-radius: 20px; }
+  main { max-width: 940px; margin: 0 auto; padding: 22px; }
+  .controls { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+              padding: 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+  .controls .field { display: flex; flex-direction: column; gap: 5px; }
+  .controls label { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
+  select, input, button, textarea { font: inherit; }
+  select, input[type=text] { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: #fff; min-width: 240px; }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 10px 16px;
+           font-weight: 600; cursor: pointer; }
+  button:hover { background: var(--accent-ink); }
+  button:disabled { opacity: .55; cursor: default; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-top: 18px; }
+  .hidden { display: none; }
+  .headline { font-size: 18px; font-weight: 650; line-height: 1.45; margin: 2px 0 6px; }
+  .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted);
+                   font-weight: 700; margin: 20px 0 8px; }
+  ul.claims { list-style: none; margin: 0; padding: 0; }
+  ul.claims li { padding: 9px 0; border-top: 1px solid var(--line); }
+  ul.claims li:first-child { border-top: 0; }
+  .claim-text { }
+  .chips { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-size: 11.5px; background: var(--chip-bg); color: var(--chip-ink); border-radius: 20px;
+          padding: 2px 9px; font-variant-numeric: tabular-nums; }
+  .flag { background: var(--flag-bg); border: 1px solid var(--flag-line); border-radius: 9px;
+          padding: 10px 12px; margin: 8px 0; }
+  .flag .sev { font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--flag-ink); letter-spacing: .5px; }
+  .flag .msg { margin-top: 2px; }
+  .refusal { background: var(--refuse-bg); border: 1px solid var(--refuse-line); color: var(--refuse-ink);
+             border-radius: 10px; padding: 14px 16px; }
+  .caveats { color: var(--muted); font-size: 13.5px; margin-top: 14px; }
+  .caveats li { margin: 4px 0; }
+  .meta { color: var(--muted); font-size: 12.5px; margin-top: 16px; border-top: 1px dashed var(--line); padding-top: 10px; }
+  .notice { color: var(--flag-ink); font-size: 13px; margin-top: 6px; }
+  .thinking { color: var(--muted); font-style: italic; }
+  /* conversation */
+  .chat-log { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+  .msg { max-width: 88%; padding: 10px 13px; border-radius: 12px; }
+  .msg.user { align-self: flex-end; background: var(--accent); color: #fff; }
+  .msg.ai { align-self: flex-start; background: #f1f5f6; border: 1px solid var(--line); }
+  .msg.ai .chips .chip { background: #e2ecec; }
+  .ask-row { display: flex; gap: 10px; }
+  .ask-row input { flex: 1; }
+  .err { color: var(--refuse-ink); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Clinical Co-Pilot</h1>
+  <span class="sub">grounded, verified chart summaries from OpenEMR</span>
+  <span class="who" id="who">Dr. admin</span>
+</header>
+<main>
+  <div class="controls">
+    <div class="field">
+      <label for="patient">Patient</label>
+      <select id="patient"><option value="">Loading patients…</option></select>
+    </div>
+    <div class="field">
+      <label for="reason">Break-glass reason <span style="text-transform:none;font-weight:400">(local: no schedule)</span></label>
+      <input id="reason" type="text" value="Reviewing chart" />
+    </div>
+    <button id="open" onclick="openChart()">Open chart</button>
+  </div>
+
+  <section id="summary" class="panel hidden"></section>
+
+  <section id="convo" class="panel hidden">
+    <div class="section-title">Ask the co-pilot</div>
+    <div class="chat-log" id="chatlog"></div>
+    <div class="ask-row">
+      <input id="question" type="text" placeholder="e.g. What are her active medications and recent labs?"
+             onkeydown="if(event.key==='Enter') ask()" />
+      <button id="askbtn" onclick="ask()">Ask</button>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let conversationId = null;
+
+function chip(s) {
+  const c = document.createElement("span");
+  c.className = "chip";
+  const shortId = (s.id || "").slice(0, 8);
+  c.textContent = `${s.resource_type}/${shortId}`;
+  c.title = s.source_id + (s.timestamp ? ` · ${s.timestamp}` : "");
+  return c;
+}
+function chipRow(sources) {
+  const row = document.createElement("div");
+  row.className = "chips";
+  (sources || []).forEach((s) => row.appendChild(chip(s)));
+  return row;
+}
+function claimItem(text, sources) {
+  const li = document.createElement("li");
+  const t = document.createElement("div");
+  t.className = "claim-text";
+  t.textContent = text;
+  li.appendChild(t);
+  if (sources && sources.length) li.appendChild(chipRow(sources));
+  return li;
+}
+
+// Stream an NDJSON POST response, invoking onEvent(obj) per line.
+async function streamNDJSON(resp, onEvent) {
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (line) onEvent(JSON.parse(line));
+    }
+  }
+  if (buf.trim()) onEvent(JSON.parse(buf.trim()));
+}
+
+async function loadPatients() {
+  try {
+    const r = await fetch("/patients");
+    const list = await r.json();
+    const sel = $("patient");
+    sel.innerHTML = "";
+    list.forEach((p) => {
+      const o = document.createElement("option");
+      o.value = p.id;
+      o.textContent = p.name + "  ·  " + p.id.slice(0, 8);
+      sel.appendChild(o);
+    });
+    if (!list.length) sel.innerHTML = '<option value="">No patients found</option>';
+  } catch (e) {
+    $("patient").innerHTML = '<option value="">Could not load patients</option>';
+  }
+}
+
+async function openChart() {
+  const pid = $("patient").value;
+  if (!pid) return;
+  const reason = $("reason").value.trim();
+  conversationId = null;
+  const sum = $("summary");
+  sum.classList.remove("hidden");
+  sum.innerHTML = '<div class="thinking">Retrieving chart and synthesising a grounded summary…</div>';
+  $("convo").classList.add("hidden");
+  $("chatlog").innerHTML = "";
+  $("open").disabled = true;
+
+  // Buckets we build up as events stream in.
+  const parts = { headline: null, must: [], changed: [], flags: [], caveats: [], notices: [], asOf: null, refused: null };
+  const render = () => {
+    if (parts.refused) {
+      sum.innerHTML = "";
+      const d = document.createElement("div");
+      d.className = "refusal";
+      d.innerHTML = "<strong>Access refused.</strong> " + parts.refused;
+      sum.appendChild(d);
+      return;
+    }
+    sum.innerHTML = "";
+    if (parts.headline) {
+      const h = document.createElement("div"); h.className = "headline"; h.textContent = parts.headline; sum.appendChild(h);
+    }
+    if (parts.flags.length) {
+      const t = document.createElement("div"); t.className = "section-title"; t.textContent = "⚠ Safety flags (deterministic)"; sum.appendChild(t);
+      parts.flags.forEach((f) => {
+        const d = document.createElement("div"); d.className = "flag";
+        d.innerHTML = `<div class="sev">${f.severity} · ${f.rule}</div><div class="msg"></div>`;
+        d.querySelector(".msg").textContent = f.message;
+        sum.appendChild(d);
+      });
+    }
+    if (parts.must.length) {
+      const t = document.createElement("div"); t.className = "section-title"; t.textContent = "Must-knows"; sum.appendChild(t);
+      const ul = document.createElement("ul"); ul.className = "claims";
+      parts.must.forEach((c) => ul.appendChild(claimItem(c.text, c.sources)));
+      sum.appendChild(ul);
+    }
+    if (parts.changed.length) {
+      const t = document.createElement("div"); t.className = "section-title"; t.textContent = "What changed since last visit"; sum.appendChild(t);
+      const ul = document.createElement("ul"); ul.className = "claims";
+      parts.changed.forEach((c) => ul.appendChild(claimItem(c.text, c.sources)));
+      sum.appendChild(ul);
+    }
+    if (parts.caveats.length) {
+      const t = document.createElement("div"); t.className = "section-title"; t.textContent = "Caveats"; sum.appendChild(t);
+      const ul = document.createElement("ul"); ul.className = "caveats";
+      parts.caveats.forEach((c) => { const li = document.createElement("li"); li.textContent = c; ul.appendChild(li); });
+      sum.appendChild(ul);
+    }
+    parts.notices.forEach((n) => { const d = document.createElement("div"); d.className = "notice"; d.textContent = "⚠ " + n; sum.appendChild(d); });
+    if (parts.asOf) { const d = document.createElement("div"); d.className = "meta"; d.textContent = "Data as of " + parts.asOf; sum.appendChild(d); }
+  };
+
+  try {
+    const resp = await fetch(`/patients/${encodeURIComponent(pid)}/conversation`, {
+      method: "POST",
+      headers: { "X-Break-Glass-Reason": reason },
+    });
+    await streamNDJSON(resp, (ev) => {
+      switch (ev.type) {
+        case "refusal": parts.refused = ev.reason; break;
+        case "headline": parts.headline = ev.text; break;
+        case "must_know": parts.must.push(ev); break;
+        case "what_changed": parts.changed.push(ev); break;
+        case "flag": parts.flags.push(ev); break;
+        case "caveat": parts.caveats.push(ev.text); break;
+        case "notice": parts.notices.push(ev.text); break;
+        case "data_as_of": parts.asOf = ev.timestamp; break;
+        case "conversation": conversationId = ev.conversation_id; break;
+      }
+      render();
+    });
+    if (conversationId && !parts.refused) $("convo").classList.remove("hidden");
+  } catch (e) {
+    sum.innerHTML = '<div class="err">Request failed: ' + e + '</div>';
+  } finally {
+    $("open").disabled = false;
+  }
+}
+
+async function ask() {
+  const q = $("question").value.trim();
+  if (!q || !conversationId) return;
+  $("question").value = "";
+  $("askbtn").disabled = true;
+  const log = $("chatlog");
+  const u = document.createElement("div"); u.className = "msg user"; u.textContent = q; log.appendChild(u);
+  const ai = document.createElement("div"); ai.className = "msg ai";
+  ai.innerHTML = '<span class="thinking">thinking…</span>'; log.appendChild(ai);
+  log.scrollIntoView({ block: "end" });
+
+  const answers = [], caveats = [];
+  const render = () => {
+    ai.innerHTML = "";
+    if (!answers.length && !caveats.length) { ai.innerHTML = '<span class="thinking">no grounded answer available</span>'; return; }
+    answers.forEach((a) => {
+      const p = document.createElement("div"); p.textContent = a.text; ai.appendChild(p);
+      if (a.sources && a.sources.length) ai.appendChild(chipRow(a.sources));
+    });
+    caveats.forEach((c) => { const d = document.createElement("div"); d.className = "caveats"; d.textContent = c; ai.appendChild(d); });
+  };
+  try {
+    const resp = await fetch(`/conversations/${encodeURIComponent(conversationId)}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: q }),
+    });
+    if (resp.status === 404) { ai.innerHTML = '<span class="err">Conversation expired — reopen the chart.</span>'; return; }
+    await streamNDJSON(resp, (ev) => {
+      if (ev.type === "answer") answers.push(ev);
+      else if (ev.type === "caveat") caveats.push(ev.text);
+      render();
+    });
+  } catch (e) {
+    ai.innerHTML = '<span class="err">Request failed: ' + e + '</span>';
+  } finally {
+    $("askbtn").disabled = false;
+    log.scrollIntoView({ block: "end" });
+  }
+}
+
+loadPatients();
+</script>
+</body>
+</html>
