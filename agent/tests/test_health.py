@@ -166,8 +166,10 @@ async def test_openemr_probe_treats_200_and_401_as_reachable(
 
 
 async def test_anthropic_probe_flags_placeholder_key() -> None:
-    settings = health.get_settings()
-    # Default dev config uses a placeholder key.
+    # Use an explicit placeholder key so the probe's logic is tested
+    # deterministically, independent of whatever real key sits in the ambient
+    # .env (a real key would otherwise make this probe report "ok").
+    settings = health.get_settings().model_copy(update={"anthropic_api_key": "sk-ant-xxxxxxxx"})
     result = await health._check_anthropic(settings)
     assert result.status == "not_configured"
     assert result.required is True

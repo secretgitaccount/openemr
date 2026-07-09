@@ -14,6 +14,8 @@ from copilot.config import get_settings
 from copilot.logging import configure_logging
 from copilot.health import router as health_router
 from copilot.api.summary import router as summary_router
+from copilot.api.chat import router as chat_router
+from copilot.api.prewarm import router as prewarm_router
 from copilot.middleware import CorrelationIdMiddleware
 
 
@@ -42,6 +44,8 @@ def create_app() -> FastAPI:
     # --- Router wiring ---
     app.include_router(health_router)  # M0-3 health-ready: /health, /ready
     app.include_router(summary_router)  # M1-7 orchestrator: POST /patients/{id}/summary
+    app.include_router(chat_router)  # M2-5 conversation: start + follow-up messages
+    app.include_router(prewarm_router)  # M2-5 prewarm: POST /prewarm
     # (later PRPs append their single include line here)
 
     return app

@@ -72,4 +72,20 @@ New modules: `schemas/clinical.py`, `schemas/output.py`, `openemr/panel.py`, `au
 
 **API-key boundary:** every PRP **builds and unit-tests with the Anthropic SDK mocked — no key.** The key (`ANTHROPIC_API_KEY` in `agent/.env`, model `claude-sonnet-5`) is needed only for the **live** smokes in M1-5 and the M1-7 acceptance.
 
-> M2–M3 PRPs are generated **just-in-time** as each gate clears. The task breakdown for each is already in `PRD.md §14`.
+## M2 dependency DAG (what the swarm runs)
+
+Only M2-5 edits `controller.py`, `api/`, and `main.py`; each other M2 PRP owns disjoint new modules.
+
+```
+M2-1 rule-engine ─────────────┐   (verification/{knowledge,rules,gate})
+M2-2 cache+conversation ─┬─────┤   (orchestrator/{cache,conversation}, schemas/conversation, llm follow-up)
+M2-3 roles ──────────────┤     │   (openemr/roles)
+                          └─> M2-4 prewarm ─┤   (orchestrator/prewarm — needs the cache)
+                                             ▼
+                              M2-5 integrate  ← M2 acceptance
+                              (role gate + chat endpoint + prewarm + cache-through in controller/api/main)
+```
+
+**API-key boundary (same as M1):** all M2 PRPs build + unit-test with the LLM mocked — no key. The key (plus a Front-Office OpenEMR user) is needed only for the M2-5 live acceptance.
+
+> M3 PRPs are generated **just-in-time** once M2 clears. The task breakdown is in `PRD.md §14` / §13.

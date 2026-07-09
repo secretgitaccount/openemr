@@ -71,7 +71,9 @@ async def get_orchestrator() -> AsyncIterator[Orchestrator]:
         credentials=creds,
     )
     async with FhirClient(provider, settings=settings) as client:
-        yield HandRolledOrchestrator(fhir_client=client)
+        # ``provider`` is also the role gate's token source (M2-3): the summary
+        # lifecycle refuses a non-clinical identity before any clinical read.
+        yield HandRolledOrchestrator(fhir_client=client, token_source=provider)
 
 
 # ---------------------------------------------------------------------------

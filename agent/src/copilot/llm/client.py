@@ -62,6 +62,7 @@ from copilot.schemas.clinical import (
     Medication,
     Problem,
 )
+from copilot.schemas.conversation import ConversationTurn, GroundedAnswer
 from copilot.schemas.core import SourceRef
 from copilot.schemas.output import GroundedSummary
 
@@ -75,6 +76,36 @@ _MAX_TOKENS = 4096
 
 # Placeholder marker in the default dev config — a key containing it is not real.
 _PLACEHOLDER_MARKER = "xxxx"
+
+# The follow-up system prompt: same grounding contract as SYSTEM_PROMPT, but the
+# job is to answer a specific question against the *retained* records of the
+# patient already in context (FR-7). Pronouns ("her", "his") resolve to that
+# pinned patient — the prompt never re-selects a chart.
+FOLLOWUP_SYSTEM_PROMPT = """\
+You are a clinical co-pilot answering a follow-up question about the patient the \
+clinician is already reviewing. You are given, as JSON: the follow-up `question`, \
+the prior conversation `history` (oldest first), and the minimum-necessary \
+retrieved `records` for that one patient (medications, allergies, labs, problems, \
+and the deltas since the last visit). Each record carries a `source` object with \
+a `resource_type` and `id`.
+
+Answer only about the patient in these records. Pronouns in the question (e.g. \
+"her", "his", "their") refer to that patient — never infer a different patient.
+
+Hard rules:
+- Every clinical claim in `answer` MUST carry the `source` of each record it is \
+drawn from. Put those source pointers in the claim's `sources` list, copying \
+`resource_type` and `id` verbatim from the input. If a record supplies a \
+`timestamp`, copy it too.
+- NEVER assert a clinical fact that is not backed by a retrieved record. Do not \
+infer, extrapolate, or add general medical knowledge as if it were this patient's \
+data. If you cannot cite it, do not say it.
+- If the records do not contain what was asked, say so in `caveats` rather than \
+guessing. Distinguish "no data on file" (the category was not retrieved) from \
+"no known ..." (retrieved but empty).
+
+`caveats` are plain-language limitations or hedges and are NOT grounded claims — \
+do not attach sources to them. Be concise and specific."""
 
 
 class LLMError(RuntimeError):
@@ -188,6 +219,29 @@ def build_payload(critical_set: CriticalSet, deltas: Deltas) -> str:
     return json.dumps(data, separators=(",", ":"))
 
 
+def build_followup_payload(
+    question: str,
+    history: list[ConversationTurn],
+    critical_set: CriticalSet,
+    deltas: Deltas,
+) -> str:
+    """Serialise a follow-up into the minimum-necessary user-message JSON.
+
+    Carries the question, the prior turns so pronouns resolve, and the pinned
+    patient's retrieved records (same minimum-necessary shape as
+    :func:`build_payload`). Only ids, resource types, names, values, and
+    timestamps of the records are included — never more than the one-shot summary
+    already sends.
+    """
+
+    data: dict[str, Any] = {
+        "question": question,
+        "history": [{"role": turn.role, "text": turn.text} for turn in history],
+        "records": json.loads(build_payload(critical_set, deltas)),
+    }
+    return json.dumps(data, separators=(",", ":"))
+
+
 # ---------------------------------------------------------------------------
 # Retry classification
 # ---------------------------------------------------------------------------
@@ -264,7 +318,9 @@ class LLMClient:
         client = self._anthropic()
 
         with trace("llm.summarize", metadata={"model": self._model}) as span:
-            message = await self._call(client, payload)
+            message = await self._call(
+                client, payload, system=SYSTEM_PROMPT, output_format=GroundedSummary
+            )
 
             if message.stop_reason == "refusal":
                 logger.warning("llm.summarize.refusal", model=self._model)
@@ -294,13 +350,76 @@ class LLMClient:
             )
             return summary
 
+    async def answer_followup(
+        self,
+        question: str,
+        history: list[ConversationTurn],
+        critical_set: CriticalSet,
+        deltas: Deltas,
+    ) -> GroundedAnswer:
+        """Answer a follow-up about the pinned patient, grounded in its records.
+
+        Builds the minimum-necessary user payload — the question, the prior turns
+        (so pronouns like "her" resolve to the patient already in context), and
+        that patient's retained records — calls Sonnet with the ``GroundedAnswer``
+        output schema attached, and returns the parsed model. The ``llm.followup``
+        span records the model and token counts — never the payload or the
+        conversation text. Raises :class:`LLMError` on a refusal or a parse failure
+        (FR-11), or when transient retries are exhausted.
+        """
+
+        payload = build_followup_payload(question, history, critical_set, deltas)
+        client = self._anthropic()
+
+        with trace("llm.followup", metadata={"model": self._model}) as span:
+            message = await self._call(
+                client, payload, system=FOLLOWUP_SYSTEM_PROMPT, output_format=GroundedAnswer
+            )
+
+            if message.stop_reason == "refusal":
+                logger.warning("llm.followup.refusal", model=self._model)
+                raise LLMError(
+                    "the model refused to answer the follow-up; surfacing rather "
+                    "than fabricating one.",
+                    retriable=False,
+                )
+
+            answer = message.parsed_output
+            if answer is None:
+                logger.warning("llm.followup.unparseable", model=self._model)
+                raise LLMError(
+                    "the model returned no parseable GroundedAnswer.",
+                    retriable=False,
+                )
+
+            usage = message.usage
+            span.update(
+                metadata={
+                    "model": self._model,
+                    "input_tokens": getattr(usage, "input_tokens", None),
+                    "output_tokens": getattr(usage, "output_tokens", None),
+                    "answer_claims": len(answer.answer),
+                    "turns": len(history),
+                }
+            )
+            return answer
+
     # -- internals ---------------------------------------------------------
 
-    async def _call(self, client: AsyncAnthropic, payload: str) -> Any:
+    async def _call(
+        self,
+        client: AsyncAnthropic,
+        payload: str,
+        *,
+        system: str,
+        output_format: type[Any],
+    ) -> Any:
         """Call ``messages.parse`` with tenacity retry on transient failures.
 
         The correlation id (when set) is threaded as ``X-Correlation-ID`` so the
-        call is traceable end-to-end. A parse failure (pydantic
+        call is traceable end-to-end. ``system`` and ``output_format`` are supplied
+        by the caller (summary vs follow-up) so the retry, correlation-id, and
+        error-translation logic is shared. A parse failure (pydantic
         ``ValidationError``) is not transient and is translated into a typed
         :class:`LLMError` here.
         """
@@ -319,9 +438,9 @@ class LLMClient:
                     return await client.messages.parse(
                         model=self._model,
                         max_tokens=_MAX_TOKENS,
-                        system=SYSTEM_PROMPT,
+                        system=system,
                         messages=[{"role": "user", "content": payload}],
-                        output_format=GroundedSummary,
+                        output_format=output_format,
                         extra_headers=extra_headers,
                     )
         except pydantic.ValidationError as exc:
