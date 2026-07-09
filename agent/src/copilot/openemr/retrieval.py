@@ -363,6 +363,44 @@ def _map_lab(resource: dict[str, Any]) -> LabResult | None:
     )
 
 
+#: Most recent readings kept per distinct lab test for the summary. Trends need a
+#: few points; every abnormal is kept regardless of age (see :func:`_bound_labs`).
+_LABS_PER_TEST = 3
+
+
+def _lab_recency(lab: LabResult) -> float:
+    """Sort key — newer first; an undated result sinks to the bottom."""
+
+    return lab.effective.timestamp() if lab.effective else float("-inf")
+
+
+def _bound_labs(labs: list[LabResult], per_test: int = _LABS_PER_TEST) -> list[LabResult]:
+    """Reduce a long lab history to the clinically-salient slice (minimum-necessary, NFR-4).
+
+    FHIR models every analyte as its own ``Observation``, so a decade of
+    comprehensive panels is thousands of result-level records — most of them
+    redundant routine normals. This keeps the most recent ``per_test`` readings of
+    each distinct test (trends survive) **plus every result flagged abnormal at any
+    age** (nothing clinically significant is dropped), collapsing thousands of
+    readings to a few hundred. The full record is untouched in OpenEMR and stays
+    retrievable on demand; this only bounds what the summary reasons over.
+    """
+
+    by_test: dict[str, list[LabResult]] = {}
+    for lab in labs:
+        by_test.setdefault(lab.name, []).append(lab)
+
+    kept: dict[str, LabResult] = {}  # id -> lab; de-dups across the two passes
+    for group in by_test.values():
+        for lab in sorted(group, key=_lab_recency, reverse=True)[:per_test]:
+            kept[lab.id] = lab
+    for lab in labs:  # never drop an abnormal, however old
+        if lab.abnormal and lab.id not in kept:
+            kept[lab.id] = lab
+
+    return sorted(kept.values(), key=_lab_recency, reverse=True)
+
+
 def _map_problem(resource: dict[str, Any]) -> Problem | None:
     """Map a FHIR ``Condition`` to :class:`Problem` (skip if unusable)."""
 
@@ -498,8 +536,9 @@ async def get_recent_labs(
         bundle = await client.get("/Observation", params=params)
     except FhirError:
         return _partial(_LABS)
-    labs, sources = _map_all(_bundle_resources(bundle), _map_lab)
-    return ToolResult(data=labs, sources=sources)
+    labs, _ = _map_all(_bundle_resources(bundle), _map_lab)
+    labs = _bound_labs(labs)  # minimum-necessary: latest-per-test + abnormals (NFR-4)
+    return ToolResult(data=labs, sources=[lab.source for lab in labs])
 
 
 async def get_problem_list(
