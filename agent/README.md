@@ -59,8 +59,31 @@ pytest
 
 ## Docker
 
+The image (`agent/Dockerfile`) is a slim Python 3.13 base, runs as a non-root
+user, binds Railway's injected `$PORT` (falling back to 8000), and has a
+`HEALTHCHECK` that hits `/health`.
+
 ```bash
 cd agent
 docker build -t clinical-copilot .
 docker run --rm -p 8000:8000 --env-file .env clinical-copilot
+# then: curl -sf localhost:8000/health   -> {"status":"ok"}
 ```
+
+## Deploy (Railway)
+
+The agent deploys as **its own Railway service** (PRD §12/§14). The deploy
+artifacts live in `deploy/`:
+
+- `deploy/railway.json` — service config (Dockerfile builder, start command,
+  `/health` healthcheck, restart policy).
+- `deploy/.env.railway.example` — env template (no secrets) listing required vs.
+  optional variables.
+- `deploy/RUNBOOK.md` — the operator procedure (`railway init` → set vars →
+  `railway up` → verify `/health` + `/ready`).
+
+**Auth boundary:** the agent authenticates to OpenEMR via the OAuth2 *password
+grant*, a **dev** setting the stock production OpenEMR image does not enable by
+default. A deployed agent must point at an OpenEMR with the password grant
+enabled (or use the SMART EHR-launch flow, which is not built in M0–M2). See
+`deploy/RUNBOOK.md` → "Auth boundary" before pointing it at production OpenEMR.

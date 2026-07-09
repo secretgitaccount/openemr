@@ -32,8 +32,10 @@ reaches a trace (payloads are scrubbed by ``copilot.observability``).
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -60,12 +62,21 @@ from copilot.verification.gate import (
     _valid_refs,
     verify,
 )
+from copilot.verification.rules import RuleFlag
 
 __all__ = [
     "PatientSummary",
     "FollowupResult",
     "Orchestrator",
     "HandRolledOrchestrator",
+    "SummaryEvent",
+    "RefusalEvent",
+    "HeadlineEvent",
+    "ClaimEvent",
+    "FlagEvent",
+    "CaveatEvent",
+    "NoticeEvent",
+    "DataAsOfEvent",
 ]
 
 logger = get_logger(__name__)
@@ -133,6 +144,80 @@ class FollowupResult(BaseModel):
     )
 
 
+# ---------------------------------------------------------------------------
+# Progressive stream events (M3-2) — each finalized stage, emitted as it lands
+# ---------------------------------------------------------------------------
+#
+# The endpoint renders these to NDJSON as they arrive, so the response starts
+# before the whole envelope is materialised (FR-12 incremental streaming). They
+# carry only already-source-bound records — the endpoint layer owns the wire
+# serialisation (``source_id`` rendering), keeping PHI shaping in one place.
+
+
+@dataclass(frozen=True)
+class RefusalEvent:
+    """A gate refusal — the only event a refused request streams."""
+
+    patient_id: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class HeadlineEvent:
+    """The summary headline, emitted the moment the summary verifies."""
+
+    text: str
+
+
+@dataclass(frozen=True)
+class ClaimEvent:
+    """One grounded, cited claim (``must_know`` or ``what_changed``)."""
+
+    kind: Literal["must_know", "what_changed"]
+    claim: Claim
+
+
+@dataclass(frozen=True)
+class FlagEvent:
+    """One deterministic safety-rule finding."""
+
+    flag: RuleFlag
+
+
+@dataclass(frozen=True)
+class CaveatEvent:
+    """One plain-language caveat / hedge."""
+
+    text: str
+
+
+@dataclass(frozen=True)
+class NoticeEvent:
+    """A "couldn't retrieve X" notice for an un-retrieved tier (FR-12)."""
+
+    field: str
+
+
+@dataclass(frozen=True)
+class DataAsOfEvent:
+    """The closing "data as of <ts>" stamp."""
+
+    timestamp: datetime
+
+
+#: The tagged union of everything :meth:`HandRolledOrchestrator.stream_patient_summary`
+#: yields; the endpoint renders each variant to one NDJSON line.
+SummaryEvent = (
+    RefusalEvent
+    | HeadlineEvent
+    | ClaimEvent
+    | FlagEvent
+    | CaveatEvent
+    | NoticeEvent
+    | DataAsOfEvent
+)
+
+
 class Orchestrator(Protocol):
     """The swappable orchestration interface (PRD §12).
 
@@ -149,6 +234,16 @@ class Orchestrator(Protocol):
         break_glass_reason: str | None = None,
     ) -> PatientSummary:
         """Run the full lifecycle for one patient and return the envelope."""
+        ...
+
+    def stream_patient_summary(
+        self,
+        patient_id: str,
+        provider_id: str,
+        *,
+        break_glass_reason: str | None = None,
+    ) -> AsyncIterator[SummaryEvent]:
+        """Run the lifecycle and yield each stage's result as it finalizes."""
         ...
 
 
@@ -289,6 +384,98 @@ class HandRolledOrchestrator:
                 data_as_of=critical_set.retrieved_at,
             )
 
+    async def stream_patient_summary(
+        self,
+        patient_id: str,
+        provider_id: str,
+        *,
+        break_glass_reason: str | None = None,
+    ) -> AsyncIterator[SummaryEvent]:
+        """Run the M1 lifecycle, emitting each stage's result as it finalizes (FR-12).
+
+        The same gate → retrieve → synth → verify lifecycle as
+        :meth:`patient_summary`, but instead of materialising the whole envelope
+        before returning, this yields events progressively: a refused request
+        streams a single :class:`RefusalEvent`; otherwise the headline is emitted
+        the moment the summary verifies, then each grounded claim, each safety
+        flag, each caveat, one :class:`NoticeEvent` per un-retrieved tier, and
+        finally the :class:`DataAsOfEvent`. The borrowed-identity
+        :class:`FhirClient` must stay open for the generator's whole life — the
+        endpoint's request-scoped dependency keeps it so.
+        """
+
+        with trace(
+            "patient_summary",
+            metadata={"patient_id": patient_id, "provider_id": provider_id},
+        ) as span:
+            # 0. Role gate first (M2-3) — a non-clinical identity is refused
+            #    before any read, exactly as in patient_summary.
+            role_refusal = await self._role_gate(provider_id)
+            if role_refusal is not None:
+                span.update(output={"authorized": False}, metadata={"refused": "role"})
+                yield RefusalEvent(patient_id=patient_id, reason=role_refusal.reason)
+                return
+
+            # 1. Panel gate — no clinical read for an out-of-panel patient.
+            decision = await self._gate(patient_id, provider_id, break_glass_reason)
+            if not decision.in_panel:
+                span.update(output={"in_panel": False}, metadata={"refused": True})
+                yield RefusalEvent(patient_id=patient_id, reason=decision.reason)
+                return
+
+            # 2. Parallel critical-set + deltas retrieval (FR-4), cache-through.
+            critical_set, deltas_result = await asyncio.gather(
+                cached_critical_set(patient_id, client=self._fhir, cache=self._cache),
+                get_deltas_since_last_visit(patient_id, client=self._fhir),
+            )
+            deltas: Deltas = deltas_result.data
+            missing = _merge_missing(critical_set.missing, deltas_result.missing)
+            grounded_input = critical_set.model_copy(update={"deltas": deltas})
+
+            # 3. Synthesis (FR-8) — degrade to notices rather than fabricate.
+            try:
+                summary = await self._llm.summarize(critical_set, deltas)
+            except LLMError:
+                logger.warning("patient_summary.llm_unavailable", patient_id=patient_id)
+                missing = _merge_missing(missing, [_SUMMARY_UNIT])
+                span.update(
+                    output={"in_panel": True, "summarized": False},
+                    metadata={"missing": missing},
+                )
+                for name in missing:
+                    yield NoticeEvent(field=name)
+                yield DataAsOfEvent(timestamp=critical_set.retrieved_at)
+                return
+
+            # 4. Verification (FR-10) — drop ungrounded claims, attach flags.
+            verified = verify(summary, grounded_input)
+
+            # 5. Emit each finalized piece progressively (not compute-then-emit):
+            #    headline first, then claims, flags, caveats, notices, stamp.
+            yield HeadlineEvent(text=verified.summary.headline)
+            for claim in verified.summary.must_knows:
+                yield ClaimEvent(kind="must_know", claim=claim)
+            for claim in verified.summary.whats_changed:
+                yield ClaimEvent(kind="what_changed", claim=claim)
+            for flag in verified.flags:
+                yield FlagEvent(flag=flag)
+            for caveat in verified.summary.caveats:
+                yield CaveatEvent(text=caveat)
+            for name in missing:
+                yield NoticeEvent(field=name)
+            yield DataAsOfEvent(timestamp=critical_set.retrieved_at)
+
+            span.update(
+                output={"in_panel": True, "summarized": True},
+                metadata={
+                    "must_knows": len(verified.summary.must_knows),
+                    "whats_changed": len(verified.summary.whats_changed),
+                    "dropped": len(verified.dropped),
+                    "flags": len(verified.flags),
+                    "missing": missing,
+                },
+            )
+
     async def _gate(
         self,
         patient_id: str,
@@ -399,14 +586,17 @@ class HandRolledOrchestrator:
                     state.patient_id, client=self._fhir, cache=self._cache
                 )
 
-            deltas = critical_set.deltas or Deltas()
-            # The grounding ground-truth reads CriticalSet.deltas, so ensure the
-            # deltas are attached before building the valid-source set.
-            grounded_input = (
-                critical_set
-                if critical_set.deltas is not None
-                else critical_set.model_copy(update={"deltas": deltas})
-            )
+            # The grounding ground-truth reads CriticalSet.deltas, so the retained
+            # set must carry the deltas before the valid-source set is built. The
+            # cached critical set holds only the plain tiers (deltas is None), so a
+            # "what changed since last visit" follow-up would otherwise cite delta
+            # records absent from the grounding set and be dropped (the M2-5 gap).
+            # Recompute and attach them so those claims ground (M3-2).
+            deltas = critical_set.deltas
+            if deltas is None:
+                deltas = await self._recompute_deltas(state.patient_id)
+                critical_set = critical_set.model_copy(update={"deltas": deltas})
+            grounded_input = critical_set
 
             try:
                 answer = await self._llm.answer_followup(
@@ -454,6 +644,24 @@ class HandRolledOrchestrator:
                 answer=grounded_answer,
                 dropped=dropped,
             )
+
+    async def _recompute_deltas(self, patient_id: str) -> Deltas:
+        """Recompute the what-changed deltas for a follow-up's grounding set (M3-2).
+
+        Called when the retained critical set has no deltas attached, so a
+        "what changed since last visit" follow-up can ground against the
+        delta-sourced records (new encounters, meds, problems, labs) rather than
+        dropping them. Resilient by contract: any fetch failure degrades to an
+        empty :class:`Deltas` (grounding simply admits no delta records) instead
+        of sinking the follow-up.
+        """
+
+        try:
+            result = await get_deltas_since_last_visit(patient_id, client=self._fhir)
+        except Exception:
+            logger.warning("answer_followup.deltas_unavailable", patient_id=patient_id)
+            return Deltas()
+        return result.data
 
 
 def _answer_text(answer: GroundedAnswer) -> str:

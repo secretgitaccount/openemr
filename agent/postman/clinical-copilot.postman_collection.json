@@ -1,0 +1,255 @@
+{
+	"info": {
+		"_postman_id": "b6e2a3c4-1f5d-4c8a-9e2b-0a1c2d3e4f50",
+		"name": "Clinical Co-Pilot",
+		"description": "Conversational clinical co-pilot for OpenEMR — grounded, cited point-of-care synthesis over the OAuth2/SMART-FHIR API.\n\nOne request per public endpoint of the FastAPI service (`copilot.main:app`). Import this collection together with `clinical-copilot.postman_environment.json` and run the folders top-to-bottom for a local happy path.\n\n### Headers\n- `X-Provider-Id` — the acting provider (defaults to `admin` server-side when absent). Sourced from the `{{provider_id}}` variable.\n- `X-Break-Glass-Reason` — an explicit break-glass justification. Locally, Synthea patients have no schedule, so this header is the only way the *granted* summary/conversation happy path is reachable. A blank/absent value means the normal gated path (which will refuse an out-of-panel patient).\n\n### Streaming\nThe summary, conversation, and follow-up endpoints stream newline-delimited JSON (`application/x-ndjson`). Postman shows the raw stream in the response body once the stream completes.\n\n### Chaining\nStarting a conversation emits a `conversation` event whose `conversation_id` is captured by a test script into the `{{conversation_id}}` collection variable, so the \"Send follow-up message\" request chains automatically.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "health",
+			"description": "Liveness / readiness probes. No auth, no headers required.",
+			"item": [
+				{
+					"name": "Health (liveness)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"health"
+							]
+						},
+						"description": "Liveness probe. Returns the service `HealthStatus` (status + version). Always cheap; never touches OpenEMR."
+					},
+					"response": []
+				},
+				{
+					"name": "Ready (readiness)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/ready",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ready"
+							]
+						},
+						"description": "Readiness probe. Verifies upstream dependencies (e.g. the OpenEMR OAuth/FHIR surface) are reachable before the service accepts clinical traffic."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "summary",
+			"description": "The streamed, cited patient-summary endpoint (M1 acceptance surface).",
+			"item": [
+				{
+					"name": "Patient summary (streamed NDJSON)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-Provider-Id",
+								"value": "{{provider_id}}",
+								"description": "Acting provider identity (dev default `admin` if omitted)."
+							},
+							{
+								"key": "X-Break-Glass-Reason",
+								"value": "Local smoke test — Synthea patient has no schedule",
+								"description": "Break-glass justification. Required locally for the granted happy path; blank/absent means the normal gated path (refuses an out-of-panel patient)."
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/patients/{{patient_id}}/summary",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"patients",
+								"{{patient_id}}",
+								"summary"
+							]
+						},
+						"description": "Runs the gate-first lifecycle and streams the finalized summary as newline-delimited JSON (`application/x-ndjson`):\n\n- `headline`\n- one `must_know` / `what_changed` line per claim, each carrying its `sources` (`source_id` pointers, FR-8)\n- deterministic `flag` safety events (with sources)\n- `caveat` hedges\n- one `notice` per un-retrieved tier (FR-12 — \"couldn't retrieve X\")\n- a closing `data_as_of` line\n\nAn out-of-panel patient streams a single `refusal` event and nothing else — no chart data leaves the gate."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "conversation",
+			"description": "Start a chart conversation and ask follow-ups over the pinned patient.",
+			"item": [
+				{
+					"name": "Start conversation (captures conversation_id)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// The start-conversation stream is NDJSON. Find the `conversation`",
+									"// event and capture its id into the collection variable so the",
+									"// \"Send follow-up message\" request chains automatically.",
+									"const body = pm.response.text();",
+									"let conversationId = null;",
+									"body.split(/\\r?\\n/).forEach(function (line) {",
+									"    line = line.trim();",
+									"    if (!line) { return; }",
+									"    try {",
+									"        const event = JSON.parse(line);",
+									"        if (event.type === 'conversation' && event.conversation_id) {",
+									"            conversationId = event.conversation_id;",
+									"        }",
+									"    } catch (e) {",
+									"        // Non-JSON line (shouldn't happen) — skip.",
+									"    }",
+									"});",
+									"",
+									"if (conversationId) {",
+									"    pm.collectionVariables.set('conversation_id', conversationId);",
+									"    console.log('Captured conversation_id:', conversationId);",
+									"} else {",
+									"    console.log('No conversation event — request was likely refused (gated path).');",
+									"}",
+									"",
+									"pm.test('Response is NDJSON stream', function () {",
+									"    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/x-ndjson');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-Provider-Id",
+								"value": "{{provider_id}}",
+								"description": "Acting provider identity (dev default `admin` if omitted)."
+							},
+							{
+								"key": "X-Break-Glass-Reason",
+								"value": "Local smoke test — Synthea patient has no schedule",
+								"description": "Break-glass justification. Required locally for the granted happy path; blank/absent means the normal gated path (refuses an out-of-panel patient)."
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/patients/{{patient_id}}/conversation",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"patients",
+								"{{patient_id}}",
+								"conversation"
+							]
+						},
+						"description": "Starts a conversation. Runs the full role → panel → cache-through retrieve → summary lifecycle, pins the patient, and streams the cited summary followed by a `conversation` event carrying the `conversation_id` used for follow-ups.\n\nThe test script parses the NDJSON stream and stores `conversation_id` in the `{{conversation_id}}` collection variable so the next request chains.\n\nAn out-of-panel or role-denied request streams a single `refusal` event and pins nothing (no `conversation_id` captured)."
+					},
+					"response": []
+				},
+				{
+					"name": "Send follow-up message (uses captured conversation_id)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Provider-Id",
+								"value": "{{provider_id}}",
+								"description": "Acting provider identity (dev default `admin` if omitted)."
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"question\": \"What changed since the last visit?\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/conversations/{{conversation_id}}/messages",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"conversations",
+								"{{conversation_id}}",
+								"messages"
+							]
+						},
+						"description": "Answers a follow-up over the started conversation. The pinned patient is resolved from the conversation (pronouns like \"she\" never re-select a chart); the answer is grounded against the retained records and each cited claim is streamed as NDJSON:\n\n- `conversation` (echoes the id + patient)\n- one `answer` line per grounded claim, each with its `sources`\n- `dropped` notices for claims the grounding gate rejected\n- `caveat` hedges\n\nBody is a JSON object with a single `question` field. An unknown or expired `conversation_id` returns `404` (a JSON `{ \"detail\": ... }` body), not a fresh unpinned chat."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "prewarm",
+			"description": "Warm today's scheduled charts into the shared cache.",
+			"item": [
+				{
+					"name": "Prewarm today's schedule",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-Provider-Id",
+								"value": "{{provider_id}}",
+								"description": "Acting provider whose schedule is warmed (dev default `admin` if omitted)."
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/prewarm",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"prewarm"
+							]
+						},
+						"description": "Fetches the acting provider's schedule for today and warms each patient's `CriticalSet` into the process-wide shared cache (M2-4, FR-13), so opening one of those charts later reads a warm cache instead of waiting on the tiered FHIR retrieval.\n\nReturns a `PrewarmReport` — counts and timings only, no clinical values. Data-only (no LLM call) and never fatal (a single chart's retrieval failing is recorded in the report, not raised)."
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "patient_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "provider_id",
+			"value": "admin",
+			"type": "string"
+		},
+		{
+			"key": "conversation_id",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

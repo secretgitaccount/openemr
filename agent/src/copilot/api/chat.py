@@ -35,6 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from copilot.api.summary import (
     NDJSON_MEDIA_TYPE,
+    _break_glass_reason,
     _line,
     _provider_id,
     _sources,
@@ -184,7 +185,10 @@ async def start_conversation_endpoint(
     """
 
     provider_id = _provider_id(request)
-    result, conversation_id = await orchestrator.start_conversation(patient_id, provider_id)
+    break_glass_reason = _break_glass_reason(request)
+    result, conversation_id = await orchestrator.start_conversation(
+        patient_id, provider_id, break_glass_reason=break_glass_reason
+    )
 
     return StreamingResponse(
         stream_start(result, conversation_id),

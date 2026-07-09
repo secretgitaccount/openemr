@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     agent_port: int = 8000
     log_level: str = "INFO"
 
+    # --- Load testing ---
+    # When true, ``LLMClient`` returns a canned, source-bound summary/answer
+    # instead of calling Anthropic. Used by the Locust load tests (loadtest/) so
+    # throughput is measured without token spend. Never enable in production.
+    copilot_llm_stub: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:
