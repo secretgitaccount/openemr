@@ -70,9 +70,12 @@ __all__ = ["LLMClient", "LLMError"]
 
 logger = get_logger(__name__)
 
-# A grounded summary is small; this cap is generous headroom well under the
-# non-streaming HTTP-timeout ceiling.
-_MAX_TOKENS = 4096
+# Output-token cap. Must hold the whole structured summary AND any adaptive
+# thinking (on by default for Sonnet 5), for a med-heavy chart whose claims each
+# carry full UUID source_ids. At 4096 large charts truncated mid-JSON → a parse
+# failure surfaced as "llm_unavailable"; 16000 is the recommended non-streaming
+# headroom, still well under the HTTP-timeout ceiling.
+_MAX_TOKENS = 16000
 
 # Placeholder marker in the default dev config — a key containing it is not real.
 _PLACEHOLDER_MARKER = "xxxx"
