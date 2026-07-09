@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Header
 
 from copilot.api.chat import SHARED_CACHE
 from copilot.api.summary import _provider_id
@@ -61,7 +61,11 @@ async def get_prewarm_client() -> AsyncIterator[FhirClient]:
 
 @router.post("/prewarm")
 async def prewarm_endpoint(
-    request: Request,
+    x_provider_id: str | None = Header(
+        default=None,
+        alias="X-Provider-Id",
+        description="Provider whose schedule to prewarm (dev seam; defaults to admin).",
+    ),
     client: FhirClient = Depends(get_prewarm_client),
 ) -> PrewarmReport:
     """Warm today's scheduled charts into the shared cache and return the report.
@@ -72,7 +76,7 @@ async def prewarm_endpoint(
     in the returned :class:`PrewarmReport`, not raised).
     """
 
-    provider_id = _provider_id(request)
+    provider_id = _provider_id(x_provider_id)
     report = await prewarm_schedule(provider_id, client=client, cache=SHARED_CACHE)
     logger.info(
         "copilot.prewarm.completed",
