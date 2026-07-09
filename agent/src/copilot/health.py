@@ -52,6 +52,8 @@ router = APIRouter(tags=["health"])
 #: Per-dependency network timeout. Deliberately short so ``/ready`` stays snappy
 #: and a hung dependency degrades to ``unreachable`` instead of stalling probes.
 DEP_TIMEOUT_SECONDS: float = 2.0
+#: The OpenEMR FHIR capability statement is heavy; probe it with more headroom.
+OPENEMR_PROBE_TIMEOUT_SECONDS: float = 15.0
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +121,10 @@ async def _check_openemr(client: httpx.AsyncClient, settings: Settings) -> Depen
     url = settings.openemr_base_url.rstrip("/") + "/apis/default/fhir/metadata"
     started = time.perf_counter()
     try:
-        resp = await client.get(url)
+        # The FHIR capability statement is a large, dynamically-built document
+        # (~5s over a public round-trip), so it gets a longer timeout than the
+        # other dependency probes — real data queries are far lighter.
+        resp = await client.get(url, timeout=OPENEMR_PROBE_TIMEOUT_SECONDS)
     except Exception as exc:  # httpx.ConnectError, TimeoutException, etc.
         return DependencyStatus(
             status="unreachable",

@@ -168,7 +168,7 @@ async def test_openemr_probe_treats_200_and_401_as_reachable(
         status_code = code
 
     class _FakeClient:
-        async def get(self, _url: str) -> _Resp:
+        async def get(self, _url: str, **_kwargs: object) -> _Resp:
             return _Resp()
 
     result = await health._check_openemr(_FakeClient(), settings)  # type: ignore[arg-type]
