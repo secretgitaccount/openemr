@@ -283,7 +283,7 @@ def main() -> None:
         max_concurrency=2,
     )
 
-    print(result.format())
+    print(result.format(include_item_results=True))
     flush()
 
 
