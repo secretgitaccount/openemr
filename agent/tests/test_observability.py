@@ -25,6 +25,24 @@ def _reset_client() -> None:
     observability.reset_langfuse_client()
 
 
+@pytest.fixture
+def _no_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force the "unconfigured" path regardless of real keys in the env.
+
+    These disabled-path tests must assert graceful degradation independent of
+    whatever ``.env`` the developer has locally (real Langfuse keys must not
+    make them fail), so pin placeholder keys for the duration of the test.
+    """
+
+    from copilot.config import get_settings as _real_get_settings
+
+    placeholder = _real_get_settings().model_copy(
+        update={"langfuse_public_key": "pk-xxxx", "langfuse_secret_key": "sk-xxxx"}
+    )
+    monkeypatch.setattr(observability, "get_settings", lambda: placeholder)
+    observability.reset_langfuse_client()
+
+
 # ---------------------------------------------------------------------------
 # scrub_phi
 # ---------------------------------------------------------------------------
@@ -100,13 +118,13 @@ def test_scrub_preserves_none_and_empty_containers() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_client_is_none_with_placeholder_keys() -> None:
-    # Default settings carry placeholder ("xxxx") Langfuse keys.
+def test_client_is_none_with_placeholder_keys(_no_keys: None) -> None:
+    # Placeholder ("xxxx") Langfuse keys => no client.
     assert observability.get_langfuse_client() is None
     assert observability.langfuse_enabled() is False
 
 
-def test_trace_is_noop_without_keys() -> None:
+def test_trace_is_noop_without_keys(_no_keys: None) -> None:
     ran = {"body": False}
     with trace("noop-span") as span:
         assert span.enabled is False

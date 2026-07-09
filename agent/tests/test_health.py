@@ -73,8 +73,19 @@ def test_ready_audit_globals_is_stubbed(client: TestClient) -> None:
     assert "TODO" in (audit["detail"] or "")
 
 
-def test_ready_langfuse_degrades_without_keys(client: TestClient) -> None:
-    """Default dev config has no Langfuse keys → not_configured, non-gating."""
+def test_ready_langfuse_degrades_without_keys(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Absent Langfuse keys → not_configured, non-gating.
+
+    Pin placeholder keys so the assertion holds regardless of the developer's
+    local ``.env`` (real Langfuse keys must not turn this red).
+    """
+
+    placeholder = health.get_settings().model_copy(
+        update={"langfuse_public_key": "pk-xxxx", "langfuse_secret_key": "sk-xxxx"}
+    )
+    monkeypatch.setattr(health, "get_settings", lambda: placeholder)
 
     langfuse = client.get("/ready").json()["checks"]["langfuse"]
     assert langfuse["status"] == "not_configured"
