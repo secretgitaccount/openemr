@@ -1,0 +1,104 @@
+# Clinical Co-Pilot — alert definitions (M3-5)
+#
+# Each alert references only telemetry that src/copilot actually emits:
+#   spans   : patient_summary, answer_followup, get_patient, get_critical_set,
+#             get_deltas_since_last_visit, get_todays_schedule,
+#             is_patient_in_panel, break_glass, resolve_role, prewarm_schedule,
+#             llm.summarize, llm.followup, verify
+#             (each span carries metadata.success and metadata.duration_ms;
+#              a failed span also has level == "ERROR")
+#   events  : verification.pass / verification.fail
+#             tool.success / tool.fail
+#
+# Thresholds are the starting SLO targets from PRD §13; tune after a week of
+# baseline data. Windows are rolling.
+
+version: 1
+
+defaults:
+  evaluation_interval: 1m
+  notify:
+    warning: "#copilot-alerts"
+    critical: "pagerduty:copilot-oncall"
+
+alerts:
+  # (1) Latency SLO — p95 of the top-level summary span.
+  - id: summary_p95_latency_high
+    title: "patient_summary p95 latency over budget"
+    severity: critical
+    source:
+      type: span
+      span: patient_summary
+      field: metadata.duration_ms
+    condition: "percentile(metadata.duration_ms, 95) > threshold"
+    threshold_ms: 8000
+    window: 15m
+    for: 10m
+    runbook: "RUNBOOK.md#summary_p95_latency_high"
+
+  # (2) Error rate — failed top-level requests over total.
+  - id: request_error_rate_high
+    title: "Request error rate above budget"
+    severity: critical
+    source:
+      type: span
+      spans: [patient_summary, answer_followup]
+      failure_predicate: "metadata.success == false OR level == 'ERROR'"
+    condition: "count(failure) / count(total) > threshold"
+    threshold_ratio: 0.05          # 5% of requests
+    window: 15m
+    for: 10m
+    min_sample: 20                 # suppress on tiny denominators
+    runbook: "RUNBOOK.md#request_error_rate_high"
+
+  # (3) Tool-failure rate — failed downstream tool/LLM spans over total.
+  - id: tool_failure_rate_high
+    title: "Downstream tool failure rate above budget"
+    severity: warning
+    source:
+      type: span
+      spans:
+        - get_patient
+        - get_critical_set
+        - get_deltas_since_last_visit
+        - get_todays_schedule
+        - is_patient_in_panel
+        - break_glass
+        - resolve_role
+        - llm.summarize
+        - llm.followup
+      failure_predicate: "metadata.success == false OR level == 'ERROR'"
+    condition: "count(failure) / count(total) > threshold"
+    threshold_ratio: 0.10          # 10% of tool calls
+    window: 10m
+    for: 5m
+    min_sample: 20
+    runbook: "RUNBOOK.md#tool_failure_rate_high"
+
+  # (4) Grounding quality — verification failures over total (FR-10).
+  - id: verification_fail_rate_high
+    title: "Grounding-gate failure rate elevated"
+    severity: warning
+    source:
+      type: event
+      events: [verification.pass, verification.fail]
+      failure_event: verification.fail
+    condition: "count(verification.fail) / (count(verification.pass) + count(verification.fail)) > threshold"
+    threshold_ratio: 0.20          # >20% of summaries dropping claims
+    window: 30m
+    for: 15m
+    min_sample: 10
+    runbook: "RUNBOOK.md#verification_fail_rate_high"
+
+  # (5) Break-glass spike — governance attention signal.
+  - id: break_glass_spike
+    title: "Break-glass access spike"
+    severity: warning
+    source:
+      type: audit_log
+      event: copilot.audit.break_glass
+    condition: "count(copilot.audit.break_glass) > threshold"
+    threshold_count: 10
+    window: 1h
+    for: 0m
+    runbook: "RUNBOOK.md#break_glass_spike"

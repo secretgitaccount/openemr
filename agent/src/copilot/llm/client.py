@@ -64,7 +64,7 @@ from copilot.schemas.clinical import (
 )
 from copilot.schemas.conversation import ConversationTurn, GroundedAnswer
 from copilot.schemas.core import SourceRef
-from copilot.schemas.output import GroundedSummary
+from copilot.schemas.output import Claim, GroundedSummary
 
 __all__ = ["LLMClient", "LLMError"]
 
@@ -106,6 +106,75 @@ guessing. Distinguish "no data on file" (the category was not retrieved) from \
 
 `caveats` are plain-language limitations or hedges and are NOT grounded claims — \
 do not attach sources to them. Be concise and specific."""
+
+
+# ---------------------------------------------------------------------------
+# Stub-LLM mode (load testing) — canned, source-bound output, zero Anthropic
+# ---------------------------------------------------------------------------
+#
+# When ``Settings.copilot_llm_stub`` is set (env ``COPILOT_LLM_STUB=1``) the
+# client returns a deterministic, grounded summary/answer built from the
+# retrieved records instead of calling Anthropic. This lets the Locust load
+# tests in ``loadtest/`` measure end-to-end throughput of the retrieve → gate →
+# verify → stream path without any token spend. The canned claims cite real
+# source records from the input so they survive the grounding verifier (M1-6).
+
+
+def _first_source(critical_set: CriticalSet) -> SourceRef | None:
+    """Return one real :class:`SourceRef` from the retrieved records, if any."""
+
+    if critical_set.medications:
+        return critical_set.medications[0].source
+    if critical_set.problems:
+        return critical_set.problems[0].source
+    if critical_set.labs:
+        return critical_set.labs[0].source
+    if critical_set.allergies:
+        return critical_set.allergies[0].source
+    return None
+
+
+def _stub_summary(critical_set: CriticalSet, deltas: Deltas) -> GroundedSummary:
+    """Build a deterministic, source-bound summary for stub-LLM (load) mode."""
+
+    must_knows: list[Claim] = []
+    for med in critical_set.medications[:3]:
+        must_knows.append(
+            Claim(text=f"On {med.name} ({med.status}).", sources=[med.source])
+        )
+    for lab in critical_set.labs[:2]:
+        if lab.abnormal:
+            must_knows.append(
+                Claim(
+                    text=f"Abnormal {lab.name}: {lab.value} {lab.unit or ''}".strip() + ".",
+                    sources=[lab.source],
+                )
+            )
+
+    whats_changed: list[Claim] = [
+        Claim(text=f"New medication since last visit: {med.name}.", sources=[med.source])
+        for med in deltas.new_meds[:3]
+    ]
+
+    return GroundedSummary(
+        headline="Stub-LLM load-test summary (no Anthropic call).",
+        must_knows=must_knows,
+        whats_changed=whats_changed,
+        caveats=["Generated in stub-LLM mode for load testing; not clinical output."],
+    )
+
+
+def _stub_answer(critical_set: CriticalSet, deltas: Deltas) -> GroundedAnswer:
+    """Build a deterministic, source-bound follow-up answer for stub-LLM mode."""
+
+    source = _first_source(critical_set)
+    if source is not None:
+        answer = [Claim(text="Stub-LLM load-test answer.", sources=[source])]
+        caveats: list[str] = ["Generated in stub-LLM mode for load testing."]
+    else:
+        answer = []
+        caveats = ["No records on file; stub-LLM mode for load testing."]
+    return GroundedAnswer(answer=answer, caveats=caveats)
 
 
 class LLMError(RuntimeError):
@@ -281,6 +350,9 @@ class LLMClient:
         self._client = client
         self._model = self._settings.anthropic_model
         self._max_attempts = max_attempts
+        # Load-test stub: when set, return canned source-bound output instead of
+        # calling Anthropic (see ``_stub_summary`` / ``_stub_answer``).
+        self._stub = self._settings.copilot_llm_stub
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -313,6 +385,11 @@ class LLMClient:
         payload. Raises :class:`LLMError` on a refusal or a parse failure (FR-11),
         or when transient retries are exhausted.
         """
+
+        if self._stub:
+            # Load-test path: never touch Anthropic (per the cost design).
+            logger.info("llm.summarize.stub", model=self._model)
+            return _stub_summary(critical_set, deltas)
 
         payload = build_payload(critical_set, deltas)
         client = self._anthropic()
@@ -367,6 +444,11 @@ class LLMClient:
         conversation text. Raises :class:`LLMError` on a refusal or a parse failure
         (FR-11), or when transient retries are exhausted.
         """
+
+        if self._stub:
+            # Load-test path: never touch Anthropic (per the cost design).
+            logger.info("llm.followup.stub", model=self._model)
+            return _stub_answer(critical_set, deltas)
 
         payload = build_followup_payload(question, history, critical_set, deltas)
         client = self._anthropic()

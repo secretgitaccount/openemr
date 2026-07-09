@@ -88,4 +88,15 @@ M2-3 roles ──────────────┤     │   (openemr/role
 
 **API-key boundary (same as M1):** all M2 PRPs build + unit-test with the LLM mocked — no key. The key (plus a Front-Office OpenEMR user) is needed only for the M2-5 live acceptance.
 
-> M3 PRPs are generated **just-in-time** once M2 clears. The task breakdown is in `PRD.md §14` / §13.
+## M3 dependency DAG (what the swarm runs)
+
+Only M3-2 edits `api/` + `controller.py`; every other M3 PRP owns a disjoint new dir. Mostly additive artifacts — the actual `railway up` (M3-6) is an operator step.
+
+```
+M3-2 streaming+break-glass+follow-up-deltas  (api/, controller — the one code refactor)
+M3-1 postman/         M3-3 tests/eval/        (independent — new dirs)
+M3-4 loadtest/        M3-5 observability/
+M3-6 deploy/ + Dockerfile
+```
+
+Everything builds + unit-tests with the LLM mocked/stubbed — **no key, no Claude spend** (load tests use a stub-LLM flag). §13 checklist coverage: M3-1 Postman · M3-5 dashboard+alerts · M3-4 load+baselines · M3-3 eval suite · M3-2 streaming · M3-6 deploy.

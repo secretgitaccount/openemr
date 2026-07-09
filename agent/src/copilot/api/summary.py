@@ -27,13 +27,27 @@ from copilot.logging import get_logger
 from copilot.openemr.client import FhirClient
 from copilot.openemr.oauth import TokenProvider, register_client
 from copilot.orchestrator.controller import (
+    CaveatEvent,
+    ClaimEvent,
+    DataAsOfEvent,
+    FlagEvent,
     HandRolledOrchestrator,
+    HeadlineEvent,
+    NoticeEvent,
     Orchestrator,
     PatientSummary,
+    RefusalEvent,
+    SummaryEvent,
 )
 from copilot.schemas.core import SourceRef
 
-__all__ = ["router", "get_orchestrator", "stream_summary"]
+__all__ = [
+    "router",
+    "get_orchestrator",
+    "stream_summary",
+    "_provider_id",
+    "_break_glass_reason",
+]
 
 logger = get_logger(__name__)
 
@@ -91,6 +105,20 @@ def _provider_id(request: Request) -> str:
 
     header = request.headers.get("X-Provider-Id")
     return header.strip() if header and header.strip() else _DEV_PROVIDER_ID
+
+
+def _break_glass_reason(request: Request) -> str | None:
+    """Resolve an explicit break-glass justification from the request headers.
+
+    An ``X-Break-Glass-Reason`` header threads through to the orchestrator's
+    break-glass path (M1-2 audit), making a paneled-by-override request reachable
+    over HTTP — locally, where Synthea patients have no schedule, this is the only
+    way the granted happy path is reachable. A missing or blank header means the
+    normal gated path (no override).
+    """
+
+    header = request.headers.get("X-Break-Glass-Reason")
+    return header.strip() if header and header.strip() else None
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +209,66 @@ def stream_summary(result: PatientSummary) -> Iterator[str]:
 
 
 # ---------------------------------------------------------------------------
+# Progressive stream serialisation (M3-2) — render each stage event as it lands
+# ---------------------------------------------------------------------------
+
+
+def _stream_event_line(event: SummaryEvent) -> str:
+    """Render one orchestrator :class:`SummaryEvent` to a single NDJSON line.
+
+    The wire shape is identical to :func:`stream_summary`'s (a refusal is one
+    ``refusal`` line; every claim/flag carries its ``source_id`` pointers), so a
+    client sees the same events whether the summary is streamed progressively or
+    rendered from a completed envelope.
+    """
+
+    match event:
+        case RefusalEvent():
+            return _line(
+                {"type": "refusal", "patient_id": event.patient_id, "reason": event.reason}
+            )
+        case HeadlineEvent():
+            return _line({"type": "headline", "text": event.text})
+        case ClaimEvent():
+            return _line(
+                {
+                    "type": event.kind,
+                    "text": event.claim.text,
+                    "sources": _sources(event.claim.sources),
+                }
+            )
+        case FlagEvent():
+            return _line(
+                {
+                    "type": "flag",
+                    "rule": event.flag.rule,
+                    "severity": event.flag.severity,
+                    "message": event.flag.message,
+                    "sources": _sources(event.flag.sources),
+                }
+            )
+        case CaveatEvent():
+            return _line({"type": "caveat", "text": event.text})
+        case NoticeEvent():
+            return _line(
+                {
+                    "type": "notice",
+                    "field": event.field,
+                    "text": f"Could not retrieve {event.field}; showing what is available.",
+                }
+            )
+        case DataAsOfEvent():
+            return _line({"type": "data_as_of", "timestamp": event.timestamp.isoformat()})
+
+
+async def _serialize_stream(events: AsyncIterator[SummaryEvent]) -> AsyncIterator[str]:
+    """Render an orchestrator event stream to NDJSON lines as each event lands."""
+
+    async for event in events:
+        yield _stream_event_line(event)
+
+
+# ---------------------------------------------------------------------------
 # Endpoint
 # ---------------------------------------------------------------------------
 
@@ -200,8 +288,23 @@ async def patient_summary_endpoint(
     """
 
     provider_id = _provider_id(request)
-    result = await orchestrator.patient_summary(patient_id, provider_id)
+    break_glass_reason = _break_glass_reason(request)
 
+    # Prefer true progressive streaming (each stage emitted as it finalizes)
+    # when the orchestrator supports it; fall back to compute-then-render for a
+    # bare :class:`Orchestrator` (e.g. a test fake with only ``patient_summary``).
+    streamer = getattr(orchestrator, "stream_patient_summary", None)
+    if streamer is not None:
+        return StreamingResponse(
+            _serialize_stream(
+                streamer(patient_id, provider_id, break_glass_reason=break_glass_reason)
+            ),
+            media_type=NDJSON_MEDIA_TYPE,
+        )
+
+    result = await orchestrator.patient_summary(
+        patient_id, provider_id, break_glass_reason=break_glass_reason
+    )
     return StreamingResponse(
         stream_summary(result),
         media_type=NDJSON_MEDIA_TYPE,
