@@ -29,7 +29,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Header
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -174,7 +174,20 @@ def stream_followup(result: FollowupResult) -> Iterator[str]:
 @router.post("/patients/{patient_id}/conversation")
 async def start_conversation_endpoint(
     patient_id: str,
-    request: Request,
+    x_break_glass_reason: str | None = Header(
+        default=None,
+        alias="X-Break-Glass-Reason",
+        description=(
+            "Break-glass justification. Locally, Synthea patients have no "
+            "schedule, so this is how the granted path is reached; logged as an "
+            "override. Leave blank for the normal gated path."
+        ),
+    ),
+    x_provider_id: str | None = Header(
+        default=None,
+        alias="X-Provider-Id",
+        description="Acting provider (dev seam; defaults to admin).",
+    ),
     orchestrator: HandRolledOrchestrator = Depends(get_chat_orchestrator),
 ) -> StreamingResponse:
     """Start a chart conversation and stream the cited summary + ``conversation_id``.
@@ -184,8 +197,8 @@ async def start_conversation_endpoint(
     refusal event and pins nothing.
     """
 
-    provider_id = _provider_id(request)
-    break_glass_reason = _break_glass_reason(request)
+    provider_id = _provider_id(x_provider_id)
+    break_glass_reason = _break_glass_reason(x_break_glass_reason)
     result, conversation_id = await orchestrator.start_conversation(
         patient_id, provider_id, break_glass_reason=break_glass_reason
     )
@@ -200,7 +213,11 @@ async def start_conversation_endpoint(
 async def followup_endpoint(
     conversation_id: str,
     body: FollowupRequest,
-    request: Request,
+    x_provider_id: str | None = Header(
+        default=None,
+        alias="X-Provider-Id",
+        description="Acting provider (dev seam; defaults to admin).",
+    ),
     orchestrator: HandRolledOrchestrator = Depends(get_chat_orchestrator),
 ) -> StreamingResponse | JSONResponse:
     """Answer a follow-up over a started conversation and stream the cited answer.
@@ -211,7 +228,7 @@ async def followup_endpoint(
     ``404`` rather than starting a fresh, unpinned chat.
     """
 
-    provider_id = _provider_id(request)
+    provider_id = _provider_id(x_provider_id)
     try:
         result = await orchestrator.answer_followup(
             conversation_id, body.question, provider_id

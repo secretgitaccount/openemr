@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator, Iterator
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Header
 from fastapi.responses import StreamingResponse
 
 from copilot.config import get_settings
@@ -95,30 +95,27 @@ async def get_orchestrator() -> AsyncIterator[Orchestrator]:
 # ---------------------------------------------------------------------------
 
 
-def _provider_id(request: Request) -> str:
-    """Resolve the acting provider from the request auth context.
+def _provider_id(value: str | None) -> str:
+    """Resolve the acting provider from the ``X-Provider-Id`` header value.
 
     Real SMART/OAuth provider binding lands with authentication; for the dev
-    flow the provider is ``admin`` unless an ``X-Provider-Id`` header overrides
-    it (a convenience seam for smoke-testing a specific practitioner's panel).
+    flow the provider is ``admin`` unless ``X-Provider-Id`` overrides it (a
+    convenience seam for smoke-testing a specific practitioner's panel).
     """
 
-    header = request.headers.get("X-Provider-Id")
-    return header.strip() if header and header.strip() else _DEV_PROVIDER_ID
+    return value.strip() if value and value.strip() else _DEV_PROVIDER_ID
 
 
-def _break_glass_reason(request: Request) -> str | None:
-    """Resolve an explicit break-glass justification from the request headers.
+def _break_glass_reason(value: str | None) -> str | None:
+    """Resolve an explicit break-glass justification from ``X-Break-Glass-Reason``.
 
-    An ``X-Break-Glass-Reason`` header threads through to the orchestrator's
-    break-glass path (M1-2 audit), making a paneled-by-override request reachable
-    over HTTP — locally, where Synthea patients have no schedule, this is the only
-    way the granted happy path is reachable. A missing or blank header means the
-    normal gated path (no override).
+    Threads through to the orchestrator's break-glass path (M1-2 audit), making a
+    paneled-by-override request reachable over HTTP — locally, where Synthea
+    patients have no schedule, this is the only way the granted happy path is
+    reachable. A missing or blank value means the normal gated path (no override).
     """
 
-    header = request.headers.get("X-Break-Glass-Reason")
-    return header.strip() if header and header.strip() else None
+    return value.strip() if value and value.strip() else None
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +273,20 @@ async def _serialize_stream(events: AsyncIterator[SummaryEvent]) -> AsyncIterato
 @router.post("/patients/{patient_id}/summary")
 async def patient_summary_endpoint(
     patient_id: str,
-    request: Request,
+    x_break_glass_reason: str | None = Header(
+        default=None,
+        alias="X-Break-Glass-Reason",
+        description=(
+            "Break-glass justification. Locally, Synthea patients have no "
+            "schedule, so this is how the granted (in-panel) path is reached; "
+            "the override is logged. Leave blank for the normal gated path."
+        ),
+    ),
+    x_provider_id: str | None = Header(
+        default=None,
+        alias="X-Provider-Id",
+        description="Acting provider (dev seam; defaults to admin).",
+    ),
     orchestrator: Orchestrator = Depends(get_orchestrator),
 ) -> StreamingResponse:
     """Stream a grounded, cited "what changed + must-knows" summary (M1 acceptance).
@@ -287,8 +297,8 @@ async def patient_summary_endpoint(
     retrieve X" notices, and a "data as of <ts>" line.
     """
 
-    provider_id = _provider_id(request)
-    break_glass_reason = _break_glass_reason(request)
+    provider_id = _provider_id(x_provider_id)
+    break_glass_reason = _break_glass_reason(x_break_glass_reason)
 
     # Prefer true progressive streaming (each stage emitted as it finalizes)
     # when the orchestrator supports it; fall back to compute-then-render for a
