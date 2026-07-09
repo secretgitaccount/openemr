@@ -6,63 +6,94 @@
 <title>Clinical Co-Pilot</title>
 <style>
   :root {
-    --bg: #f6f8fa; --panel: #ffffff; --ink: #1c2330; --muted: #5b6675;
-    --line: #e3e8ee; --accent: #0e7c86; --accent-ink: #0b5a61;
-    --flag-bg: #fff6ed; --flag-line: #f0b37e; --flag-ink: #9a4a00;
+    --bg: #eef1f4; --ink: #1c2330; --muted: #5b6675; --line: #e0e5ea;
+    --accent: #0e7c86; --accent-ink: #0b5a61;
+    --dark: #3d4a54; --dark-line: #55636e;
+    --flag-bg: #fff4ea; --flag-line: #eaa869; --flag-ink: #8a4200;
     --refuse-bg: #fdeef0; --refuse-line: #e2a3ab; --refuse-ink: #8a2733;
-    --chip-bg: #eef4f5; --chip-ink: #0b5a61;
+    --chip-bg: #e6eff0; --chip-ink: #0b5a61;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink);
          font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-  header { background: var(--panel); border-bottom: 1px solid var(--line); padding: 14px 22px;
-           display: flex; align-items: center; gap: 14px; position: sticky; top: 0; z-index: 5; }
+  header { background: #fff; border-bottom: 1px solid var(--line); padding: 13px 22px;
+           display: flex; align-items: baseline; gap: 12px; position: sticky; top: 0; z-index: 5; }
   header h1 { font-size: 17px; margin: 0; letter-spacing: .2px; }
   header .sub { color: var(--muted); font-size: 13px; }
-  header .who { margin-left: auto; font-size: 13px; color: var(--muted);
-                background: var(--chip-bg); color: var(--chip-ink); padding: 4px 10px; border-radius: 20px; }
-  main { max-width: 940px; margin: 0 auto; padding: 22px; }
-  .controls { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-              padding: 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+  header .who { margin-left: auto; font-size: 13px; background: var(--chip-bg); color: var(--chip-ink);
+                padding: 4px 11px; border-radius: 20px; }
+
+  main { max-width: 1200px; margin: 0 auto; padding: 20px;
+         display: grid; grid-template-columns: 1.5fr 1fr; gap: 18px; align-items: start; }
+  .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+
+  /* controls bar */
+  .controls { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
+              display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
   .controls .field { display: flex; flex-direction: column; gap: 5px; }
-  .controls label { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
-  select, input, button, textarea { font: inherit; }
-  select, input[type=text] { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: #fff; min-width: 240px; }
-  button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 10px 16px;
-           font-weight: 600; cursor: pointer; }
+  .controls label { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+  select { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: #fff; min-width: 280px; font: inherit; }
+  .loaded { text-align: center; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--ink); }
+  .loaded span { display: block; color: var(--muted); font-weight: 600; letter-spacing: 0; text-transform: none; margin-top: 2px; }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 10px 18px;
+           font-weight: 700; letter-spacing: .4px; text-transform: uppercase; cursor: pointer; font: inherit; }
   button:hover { background: var(--accent-ink); }
-  button:disabled { opacity: .55; cursor: default; }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-top: 18px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .reload { margin-left: auto; }
+
+  /* cards */
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .card .banner { background: var(--accent); color: #fff; font-weight: 800; text-transform: uppercase;
+                  letter-spacing: .6px; font-size: 13px; padding: 11px 16px; }
+  .card .body { padding: 14px 16px; }
   .hidden { display: none; }
-  .headline { font-size: 18px; font-weight: 650; line-height: 1.45; margin: 2px 0 6px; }
-  .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted);
-                   font-weight: 700; margin: 20px 0 8px; }
+
+  /* summary = solid teal */
+  .card.summary { background: var(--accent); color: #fff; border-color: var(--accent-ink); }
+  .card.summary .banner { padding-bottom: 4px; }
+  .card.summary .body { padding-top: 6px; }
+  .headline { font-size: 16px; font-weight: 650; line-height: 1.5; }
+
+  /* claim lists */
   ul.claims { list-style: none; margin: 0; padding: 0; }
-  ul.claims li { padding: 9px 0; border-top: 1px solid var(--line); }
+  ul.claims li { padding: 10px 0; border-top: 1px solid var(--line); }
   ul.claims li:first-child { border-top: 0; }
-  .claim-text { }
-  .chips { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
   .chip { font-size: 11.5px; background: var(--chip-bg); color: var(--chip-ink); border-radius: 20px;
           padding: 2px 9px; font-variant-numeric: tabular-nums; }
-  .flag { background: var(--flag-bg); border: 1px solid var(--flag-line); border-radius: 9px;
-          padding: 10px 12px; margin: 8px 0; }
+  .loadmore { text-align: center; color: var(--accent); font-weight: 800; letter-spacing: .5px;
+              text-transform: uppercase; font-size: 13px; padding: 12px 0 4px; cursor: pointer; }
+  .loadmore:hover { color: var(--accent-ink); text-decoration: underline; }
+
+  /* flags */
+  .card.flags { border-color: var(--flag-line); }
+  .card.flags .banner { background: var(--flag-ink); }
+  .flag { padding: 8px 0; border-top: 1px solid var(--flag-line); }
+  .flag:first-child { border-top: 0; }
   .flag .sev { font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--flag-ink); letter-spacing: .5px; }
-  .flag .msg { margin-top: 2px; }
-  .refusal { background: var(--refuse-bg); border: 1px solid var(--refuse-line); color: var(--refuse-ink);
-             border-radius: 10px; padding: 14px 16px; }
-  .caveats { color: var(--muted); font-size: 13.5px; margin-top: 14px; }
-  .caveats li { margin: 4px 0; }
-  .meta { color: var(--muted); font-size: 12.5px; margin-top: 16px; border-top: 1px dashed var(--line); padding-top: 10px; }
+
+  /* caveats */
+  .card.caveats .banner { background: #fff; color: var(--muted); border-bottom: 1px solid var(--line); }
+  .caveats ul { margin: 0; padding-left: 18px; color: #384150; font-size: 13.5px; }
+  .caveats li { margin: 7px 0; }
+  .asof { color: var(--muted); font-size: 12.5px; margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 10px; }
   .notice { color: var(--flag-ink); font-size: 13px; margin-top: 6px; }
-  .thinking { color: var(--muted); font-style: italic; }
-  /* conversation */
-  .chat-log { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
-  .msg { max-width: 88%; padding: 10px 13px; border-radius: 12px; }
+
+  /* ask co-pilot = dark */
+  .card.ask { background: var(--dark); border-color: var(--dark); color: #fff; }
+  .card.ask .banner { background: var(--dark); border-bottom: 1px solid var(--dark-line); }
+  .chat-log { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+  .msg { max-width: 92%; padding: 9px 12px; border-radius: 12px; font-size: 14px; }
   .msg.user { align-self: flex-end; background: var(--accent); color: #fff; }
-  .msg.ai { align-self: flex-start; background: #f1f5f6; border: 1px solid var(--line); }
-  .msg.ai .chips .chip { background: #e2ecec; }
-  .ask-row { display: flex; gap: 10px; }
-  .ask-row input { flex: 1; }
+  .msg.ai { align-self: flex-start; background: #eef2f4; color: var(--ink); }
+  .msg.ai .chip { background: #d9e5e6; }
+  .ask-row { display: flex; gap: 8px; }
+  .ask-row input { flex: 1; padding: 10px 12px; border: 1px solid var(--dark-line); border-radius: 8px; font: inherit; }
+  .refusal { background: var(--refuse-bg); border: 1px solid var(--refuse-line); color: var(--refuse-ink);
+             border-radius: 12px; padding: 14px 16px; }
+  .thinking { color: var(--muted); font-style: italic; }
+  .msg.ai .thinking { color: #6a7480; }
   .err { color: var(--refuse-ink); }
 </style>
 </head>
@@ -70,66 +101,122 @@
 <header>
   <h1>Clinical Co-Pilot</h1>
   <span class="sub">grounded, verified chart summaries from OpenEMR</span>
-  <span class="who" id="who">Dr. admin</span>
+  <span class="who">Dr. admin</span>
 </header>
+
 <main>
-  <div class="controls">
-    <div class="field">
-      <label for="patient">Patient</label>
-      <select id="patient"><option value="">Loading patients…</option></select>
+  <!-- LEFT column -->
+  <div class="col">
+    <div class="controls">
+      <div class="field">
+        <label for="patient">Patient</label>
+        <select id="patient" onchange="onPatientChange()"><option value="">Loading patients…</option></select>
+      </div>
+      <div class="loaded">Chart loaded:<span id="loadedAt">—</span></div>
+      <button class="reload" id="reload" onclick="openChart(true)">Reload</button>
     </div>
-    <div class="field">
-      <label for="reason">Break-glass reason <span style="text-transform:none;font-weight:400">(local: no schedule)</span></label>
-      <input id="reason" type="text" value="Reviewing chart" />
+
+    <div id="refusal" class="hidden"></div>
+    <div id="flagsCard" class="card flags hidden">
+      <div class="banner">⚠ Safety flags (deterministic)</div>
+      <div class="body" id="flagsBody"></div>
     </div>
-    <button id="open" onclick="openChart()">Open chart</button>
+    <div id="summaryCard" class="card summary hidden">
+      <div class="banner">Chart summary</div>
+      <div class="body"><div class="headline" id="headline"></div></div>
+    </div>
+    <div id="mustCard" class="card hidden">
+      <div class="banner">Must knows</div>
+      <div class="body" id="mustBody"></div>
+    </div>
+    <div id="changesCard" class="card hidden">
+      <div class="banner">Changes since last visit</div>
+      <div class="body" id="changesBody"></div>
+    </div>
   </div>
 
-  <section id="summary" class="panel hidden"></section>
-
-  <section id="convo" class="panel hidden">
-    <div class="section-title">Ask the co-pilot</div>
-    <div class="chat-log" id="chatlog"></div>
-    <div class="ask-row">
-      <input id="question" type="text" placeholder="e.g. What are her active medications and recent labs?"
-             onkeydown="if(event.key==='Enter') ask()" />
-      <button id="askbtn" onclick="ask()">Ask</button>
+  <!-- RIGHT column -->
+  <div class="col">
+    <div id="caveatsCard" class="card caveats hidden">
+      <div class="banner">Caveats</div>
+      <div class="body">
+        <ul id="caveatsBody"></ul>
+        <div class="asof" id="asof"></div>
+        <div id="notices"></div>
+      </div>
     </div>
-  </section>
+    <div id="askCard" class="card ask hidden">
+      <div class="banner">Ask the co-pilot</div>
+      <div class="body">
+        <div class="chat-log" id="chatlog"></div>
+        <div class="ask-row">
+          <input id="question" type="text" placeholder="e.g. What are her active medications and recent labs?"
+                 onkeydown="if(event.key==='Enter') ask()" />
+          <button id="askbtn" onclick="ask()">Ask</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </main>
 
 <script>
+// Tunables (adjust freely).
+const MUST_KNOWS_INITIAL = 3;
+const CHANGES_INITIAL = 6;
+const BREAK_GLASS_REASON = "Reviewing chart";
+
 const $ = (id) => document.getElementById(id);
 let conversationId = null;
+let loadedPatientId = null;   // which patient's chart is currently displayed
+let loading = false;
 
+function stamp() {
+  const d = new Date(), p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function recency(claim) {
+  let m = -Infinity;
+  (claim.sources || []).forEach((s) => { const t = s.timestamp ? Date.parse(s.timestamp) : NaN; if (!isNaN(t)) m = Math.max(m, t); });
+  return m;
+}
 function chip(s) {
-  const c = document.createElement("span");
-  c.className = "chip";
-  const shortId = (s.id || "").slice(0, 8);
-  c.textContent = `${s.resource_type}/${shortId}`;
+  const c = document.createElement("span"); c.className = "chip";
+  c.textContent = `${s.resource_type}/${(s.id || "").slice(0, 8)}`;
   c.title = s.source_id + (s.timestamp ? ` · ${s.timestamp}` : "");
   return c;
 }
 function chipRow(sources) {
-  const row = document.createElement("div");
-  row.className = "chips";
+  const row = document.createElement("div"); row.className = "chips";
   (sources || []).forEach((s) => row.appendChild(chip(s)));
   return row;
 }
-function claimItem(text, sources) {
+function claimItem(c) {
   const li = document.createElement("li");
-  const t = document.createElement("div");
-  t.className = "claim-text";
-  t.textContent = text;
-  li.appendChild(t);
-  if (sources && sources.length) li.appendChild(chipRow(sources));
+  const t = document.createElement("div"); t.textContent = c.text; li.appendChild(t);
+  if (c.sources && c.sources.length) li.appendChild(chipRow(c.sources));
   return li;
 }
+// Render most-recent-first, showing `initial` rows and hiding the rest behind LOAD MORE.
+function renderClaims(container, items, initial) {
+  container.innerHTML = "";
+  const sorted = items.slice().sort((a, b) => recency(b) - recency(a));
+  const top = document.createElement("ul"); top.className = "claims";
+  sorted.slice(0, initial).forEach((c) => top.appendChild(claimItem(c)));
+  container.appendChild(top);
+  const rest = sorted.slice(initial);
+  if (rest.length) {
+    const more = document.createElement("ul"); more.className = "claims hidden";
+    rest.forEach((c) => more.appendChild(claimItem(c)));
+    container.appendChild(more);
+    const link = document.createElement("div"); link.className = "loadmore";
+    link.textContent = ">> Load more history";
+    link.onclick = () => { more.classList.remove("hidden"); link.remove(); };
+    container.appendChild(link);
+  }
+}
 
-// Stream an NDJSON POST response, invoking onEvent(obj) per line.
 async function streamNDJSON(resp, onEvent) {
-  const reader = resp.body.getReader();
-  const dec = new TextDecoder();
+  const reader = resp.body.getReader(), dec = new TextDecoder();
   let buf = "";
   while (true) {
     const { value, done } = await reader.read();
@@ -137,8 +224,7 @@ async function streamNDJSON(resp, onEvent) {
     buf += dec.decode(value, { stream: true });
     let nl;
     while ((nl = buf.indexOf("\n")) >= 0) {
-      const line = buf.slice(0, nl).trim();
-      buf = buf.slice(nl + 1);
+      const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
       if (line) onEvent(JSON.parse(line));
     }
   }
@@ -147,145 +233,125 @@ async function streamNDJSON(resp, onEvent) {
 
 async function loadPatients() {
   try {
-    const r = await fetch("/patients");
-    const list = await r.json();
-    const sel = $("patient");
-    sel.innerHTML = "";
+    const list = await (await fetch("/patients")).json();
+    const sel = $("patient"); sel.innerHTML = "";
     list.forEach((p) => {
       const o = document.createElement("option");
-      o.value = p.id;
-      o.textContent = p.name + "  ·  " + p.id.slice(0, 8);
+      o.value = p.id; o.textContent = `${p.name}  ·  ${p.id.slice(0, 8)}`;
       sel.appendChild(o);
     });
-    if (!list.length) sel.innerHTML = '<option value="">No patients found</option>';
+    if (!list.length) { sel.innerHTML = '<option value="">No patients found</option>'; return; }
+    openChart(false);   // auto-load the first patient's chart
   } catch (e) {
     $("patient").innerHTML = '<option value="">Could not load patients</option>';
   }
 }
 
-async function openChart() {
-  const pid = $("patient").value;
-  if (!pid) return;
-  const reason = $("reason").value.trim();
-  conversationId = null;
-  const sum = $("summary");
-  sum.classList.remove("hidden");
-  sum.innerHTML = '<div class="thinking">Retrieving chart and synthesising a grounded summary…</div>';
-  $("convo").classList.add("hidden");
-  $("chatlog").innerHTML = "";
-  $("open").disabled = true;
+// Selecting a patient auto-loads their chart if it isn't already showing.
+function onPatientChange() {
+  if ($("patient").value && $("patient").value !== loadedPatientId) openChart(false);
+}
 
-  // Buckets we build up as events stream in.
-  const parts = { headline: null, must: [], changed: [], flags: [], caveats: [], notices: [], asOf: null, refused: null };
+function hideAll() {
+  ["refusal", "flagsCard", "summaryCard", "mustCard", "changesCard", "caveatsCard", "askCard"]
+    .forEach((id) => $(id).classList.add("hidden"));
+}
+
+async function openChart(force) {
+  const pid = $("patient").value;
+  if (!pid || loading) return;
+  if (!force && pid === loadedPatientId) return;   // already loaded
+  loading = true; $("reload").disabled = true;
+  hideAll();
+  conversationId = null; $("chatlog").innerHTML = "";
+  const sum = $("summaryCard"); sum.classList.remove("hidden");
+  $("headline").innerHTML = '<span class="thinking">Retrieving chart and synthesising a grounded summary…</span>';
+
+  const p = { headline: null, must: [], changed: [], flags: [], caveats: [], notices: [], asOf: null, refused: null };
   const render = () => {
-    if (parts.refused) {
-      sum.innerHTML = "";
-      const d = document.createElement("div");
-      d.className = "refusal";
-      d.innerHTML = "<strong>Access refused.</strong> " + parts.refused;
-      sum.appendChild(d);
+    if (p.refused) {
+      hideAll();
+      const r = $("refusal"); r.classList.remove("hidden");
+      r.innerHTML = '<div class="refusal"><strong>Access refused.</strong> ' + p.refused + "</div>";
       return;
     }
-    sum.innerHTML = "";
-    if (parts.headline) {
-      const h = document.createElement("div"); h.className = "headline"; h.textContent = parts.headline; sum.appendChild(h);
-    }
-    if (parts.flags.length) {
-      const t = document.createElement("div"); t.className = "section-title"; t.textContent = "⚠ Safety flags (deterministic)"; sum.appendChild(t);
-      parts.flags.forEach((f) => {
+    $("headline").textContent = p.headline || "";
+    if (p.flags.length) {
+      $("flagsCard").classList.remove("hidden");
+      const b = $("flagsBody"); b.innerHTML = "";
+      p.flags.forEach((f) => {
         const d = document.createElement("div"); d.className = "flag";
-        d.innerHTML = `<div class="sev">${f.severity} · ${f.rule}</div><div class="msg"></div>`;
-        d.querySelector(".msg").textContent = f.message;
-        sum.appendChild(d);
+        d.innerHTML = `<div class="sev">${f.severity} · ${f.rule}</div>`;
+        const m = document.createElement("div"); m.textContent = f.message; d.appendChild(m);
+        b.appendChild(d);
       });
     }
-    if (parts.must.length) {
-      const t = document.createElement("div"); t.className = "section-title"; t.textContent = "Must-knows"; sum.appendChild(t);
-      const ul = document.createElement("ul"); ul.className = "claims";
-      parts.must.forEach((c) => ul.appendChild(claimItem(c.text, c.sources)));
-      sum.appendChild(ul);
+    if (p.must.length) { $("mustCard").classList.remove("hidden"); renderClaims($("mustBody"), p.must, MUST_KNOWS_INITIAL); }
+    if (p.changed.length) { $("changesCard").classList.remove("hidden"); renderClaims($("changesBody"), p.changed, CHANGES_INITIAL); }
+    if (p.caveats.length || p.asOf || p.notices.length) {
+      $("caveatsCard").classList.remove("hidden");
+      const ul = $("caveatsBody"); ul.innerHTML = "";
+      p.caveats.forEach((c) => { const li = document.createElement("li"); li.textContent = c; ul.appendChild(li); });
+      $("asof").textContent = p.asOf ? "Data as of " + p.asOf : "";
+      const n = $("notices"); n.innerHTML = "";
+      p.notices.forEach((t) => { const d = document.createElement("div"); d.className = "notice"; d.textContent = "⚠ " + t; n.appendChild(d); });
     }
-    if (parts.changed.length) {
-      const t = document.createElement("div"); t.className = "section-title"; t.textContent = "What changed since last visit"; sum.appendChild(t);
-      const ul = document.createElement("ul"); ul.className = "claims";
-      parts.changed.forEach((c) => ul.appendChild(claimItem(c.text, c.sources)));
-      sum.appendChild(ul);
-    }
-    if (parts.caveats.length) {
-      const t = document.createElement("div"); t.className = "section-title"; t.textContent = "Caveats"; sum.appendChild(t);
-      const ul = document.createElement("ul"); ul.className = "caveats";
-      parts.caveats.forEach((c) => { const li = document.createElement("li"); li.textContent = c; ul.appendChild(li); });
-      sum.appendChild(ul);
-    }
-    parts.notices.forEach((n) => { const d = document.createElement("div"); d.className = "notice"; d.textContent = "⚠ " + n; sum.appendChild(d); });
-    if (parts.asOf) { const d = document.createElement("div"); d.className = "meta"; d.textContent = "Data as of " + parts.asOf; sum.appendChild(d); }
   };
 
   try {
     const resp = await fetch(`/patients/${encodeURIComponent(pid)}/conversation`, {
-      method: "POST",
-      headers: { "X-Break-Glass-Reason": reason },
+      method: "POST", headers: { "X-Break-Glass-Reason": BREAK_GLASS_REASON },
     });
     await streamNDJSON(resp, (ev) => {
       switch (ev.type) {
-        case "refusal": parts.refused = ev.reason; break;
-        case "headline": parts.headline = ev.text; break;
-        case "must_know": parts.must.push(ev); break;
-        case "what_changed": parts.changed.push(ev); break;
-        case "flag": parts.flags.push(ev); break;
-        case "caveat": parts.caveats.push(ev.text); break;
-        case "notice": parts.notices.push(ev.text); break;
-        case "data_as_of": parts.asOf = ev.timestamp; break;
+        case "refusal": p.refused = ev.reason; break;
+        case "headline": p.headline = ev.text; break;
+        case "must_know": p.must.push(ev); break;
+        case "what_changed": p.changed.push(ev); break;
+        case "flag": p.flags.push(ev); break;
+        case "caveat": p.caveats.push(ev.text); break;
+        case "notice": p.notices.push(ev.text); break;
+        case "data_as_of": p.asOf = ev.timestamp; break;
         case "conversation": conversationId = ev.conversation_id; break;
       }
       render();
     });
-    if (conversationId && !parts.refused) $("convo").classList.remove("hidden");
+    loadedPatientId = pid;
+    $("loadedAt").textContent = p.refused ? "—" : stamp();
+    if (conversationId && !p.refused) $("askCard").classList.remove("hidden");
   } catch (e) {
-    sum.innerHTML = '<div class="err">Request failed: ' + e + '</div>';
+    $("headline").innerHTML = '<span class="err">Request failed: ' + e + "</span>";
   } finally {
-    $("open").disabled = false;
+    loading = false; $("reload").disabled = false;
   }
 }
 
 async function ask() {
   const q = $("question").value.trim();
   if (!q || !conversationId) return;
-  $("question").value = "";
-  $("askbtn").disabled = true;
+  $("question").value = ""; $("askbtn").disabled = true;
   const log = $("chatlog");
   const u = document.createElement("div"); u.className = "msg user"; u.textContent = q; log.appendChild(u);
-  const ai = document.createElement("div"); ai.className = "msg ai";
-  ai.innerHTML = '<span class="thinking">thinking…</span>'; log.appendChild(ai);
-  log.scrollIntoView({ block: "end" });
+  const ai = document.createElement("div"); ai.className = "msg ai"; ai.innerHTML = '<span class="thinking">thinking…</span>'; log.appendChild(ai);
+  ai.scrollIntoView({ block: "nearest" });
 
   const answers = [], caveats = [];
   const render = () => {
     ai.innerHTML = "";
     if (!answers.length && !caveats.length) { ai.innerHTML = '<span class="thinking">no grounded answer available</span>'; return; }
-    answers.forEach((a) => {
-      const p = document.createElement("div"); p.textContent = a.text; ai.appendChild(p);
-      if (a.sources && a.sources.length) ai.appendChild(chipRow(a.sources));
-    });
-    caveats.forEach((c) => { const d = document.createElement("div"); d.className = "caveats"; d.textContent = c; ai.appendChild(d); });
+    answers.forEach((a) => { const d = document.createElement("div"); d.textContent = a.text; ai.appendChild(d); if (a.sources && a.sources.length) ai.appendChild(chipRow(a.sources)); });
+    caveats.forEach((c) => { const d = document.createElement("div"); d.className = "thinking"; d.textContent = c; ai.appendChild(d); });
   };
   try {
     const resp = await fetch(`/conversations/${encodeURIComponent(conversationId)}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: q }),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q }),
     });
-    if (resp.status === 404) { ai.innerHTML = '<span class="err">Conversation expired — reopen the chart.</span>'; return; }
-    await streamNDJSON(resp, (ev) => {
-      if (ev.type === "answer") answers.push(ev);
-      else if (ev.type === "caveat") caveats.push(ev.text);
-      render();
-    });
+    if (resp.status === 404) { ai.innerHTML = '<span class="err">Conversation expired — reload the chart.</span>'; return; }
+    await streamNDJSON(resp, (ev) => { if (ev.type === "answer") answers.push(ev); else if (ev.type === "caveat") caveats.push(ev.text); render(); });
   } catch (e) {
-    ai.innerHTML = '<span class="err">Request failed: ' + e + '</span>';
+    ai.innerHTML = '<span class="err">Request failed: ' + e + "</span>";
   } finally {
-    $("askbtn").disabled = false;
-    log.scrollIntoView({ block: "end" });
+    $("askbtn").disabled = false; ai.scrollIntoView({ block: "nearest" });
   }
 }
 
