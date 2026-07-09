@@ -209,3 +209,7 @@ class CriticalSet(BaseModel):
         default_factory=list,
         description="Names of the tiers that could not be retrieved.",
     )
+    labs_omitted: int = Field(
+        default=0,
+        description="Lab records available but not analysed (bounded away); 0 when full labs were analysed.",
+    )

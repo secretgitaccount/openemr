@@ -29,7 +29,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -188,6 +188,10 @@ async def start_conversation_endpoint(
         alias="X-Provider-Id",
         description="Acting provider (dev seam; defaults to admin).",
     ),
+    full_labs: bool = Query(
+        default=False,
+        description="Analyse the full lab history instead of the recent+abnormal slice (slower, costlier).",
+    ),
     orchestrator: HandRolledOrchestrator = Depends(get_chat_orchestrator),
 ) -> StreamingResponse:
     """Start a chart conversation and stream the cited summary + ``conversation_id``.
@@ -200,7 +204,7 @@ async def start_conversation_endpoint(
     provider_id = _provider_id(x_provider_id)
     break_glass_reason = _break_glass_reason(x_break_glass_reason)
     result, conversation_id = await orchestrator.start_conversation(
-        patient_id, provider_id, break_glass_reason=break_glass_reason
+        patient_id, provider_id, break_glass_reason=break_glass_reason, full_labs=full_labs
     )
 
     return StreamingResponse(

@@ -518,6 +518,7 @@ async def get_recent_labs(
     since: date | datetime | str | None = None,
     *,
     client: FhirClient,
+    bound: bool = True,
 ) -> ToolResult[list[LabResult]]:
     """Recent laboratory results (``Observation?category=laboratory``).
 
@@ -536,9 +537,13 @@ async def get_recent_labs(
         bundle = await client.get("/Observation", params=params)
     except FhirError:
         return _partial(_LABS)
-    labs, _ = _map_all(_bundle_resources(bundle), _map_lab)
-    labs = _bound_labs(labs)  # minimum-necessary: latest-per-test + abnormals (NFR-4)
-    return ToolResult(data=labs, sources=[lab.source for lab in labs])
+    all_labs, _ = _map_all(_bundle_resources(bundle), _map_lab)
+    data = _bound_labs(all_labs) if bound else all_labs  # NFR-4 minimum-necessary
+    return ToolResult(
+        data=data,
+        sources=[lab.source for lab in data],
+        total_available=len(all_labs),  # free: whole bundle was fetched to bound it
+    )
 
 
 async def get_problem_list(
@@ -600,6 +605,7 @@ async def get_critical_set(
     patient_id: str,
     *,
     client: FhirClient,
+    full_labs: bool = False,
 ) -> CriticalSet:
     """Assemble the tiered "must-know" bundle, fetching the four tiers in parallel.
 
@@ -617,7 +623,7 @@ async def get_critical_set(
         meds_r, allergy_r, labs_r, problems_r = await asyncio.gather(
             get_active_medications(patient_id, client=client),
             get_allergies(patient_id, client=client),
-            get_recent_labs(patient_id, client=client),
+            get_recent_labs(patient_id, client=client, bound=not full_labs),
             get_problem_list(patient_id, client=client),
             return_exceptions=True,
         )
@@ -628,18 +634,25 @@ async def get_critical_set(
         labs = _fold(labs_r, _LABS, missing)
         problems = _fold(problems_r, _PROBLEMS, missing)
 
+        # Labs available upstream but not analysed (bounded away) — free, since
+        # get_recent_labs already fetched the whole bundle to bound it.
+        labs_total = labs_r.total_available if isinstance(labs_r, ToolResult) else None
+        labs_omitted = max(0, (labs_total if labs_total is not None else len(labs)) - len(labs))
+
         critical_set = CriticalSet(
             medications=medications,
             allergies=allergies,
             labs=labs,
             problems=problems,
             missing=missing,
+            labs_omitted=labs_omitted,
         )
         span.update(
             metadata={
                 "medications_count": len(medications),
                 "allergies_count": len(allergies),
                 "labs_count": len(labs),
+                "labs_omitted": labs_omitted,
                 "problems_count": len(problems),
                 "missing": missing,
             }

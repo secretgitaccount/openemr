@@ -189,6 +189,11 @@ def stream_summary(result: PatientSummary) -> Iterator[str]:
         for caveat in summary.caveats:
             yield _line({"type": "caveat", "text": caveat})
 
+        # A large lab history was bounded to the recent+abnormal slice (NFR-4).
+        # Surface the count so the UI can offer an opt-in full re-analysis.
+        if result.labs_omitted > 0:
+            yield _line({"type": "lab_overflow", "omitted": result.labs_omitted})
+
     # FR-12: name what could not be retrieved as an explicit notice — "couldn't
     # retrieve X", never a silent gap. When retrieval succeeded but the model
     # step failed, the summary itself is the missing piece.

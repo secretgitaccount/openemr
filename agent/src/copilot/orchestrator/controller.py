@@ -52,6 +52,7 @@ from copilot.openemr.roles import (
 )
 from copilot.orchestrator.cache import Cache, TTLCache
 from copilot.orchestrator.conversation import ConversationStore
+from copilot.openemr.retrieval import get_critical_set
 from copilot.orchestrator.prewarm import cached_critical_set, critical_set_key
 from copilot.schemas.clinical import CriticalSet, Deltas, PanelDecision
 from copilot.schemas.conversation import ConversationTurn, GroundedAnswer
@@ -114,6 +115,10 @@ class PatientSummary(BaseModel):
     data_as_of: datetime | None = Field(
         default=None,
         description="When the retrieved data was assembled; None on refusal.",
+    )
+    labs_omitted: int = Field(
+        default=0,
+        description="Lab records available but not analysed (bounded away); 0 when full labs analysed.",
     )
 
     @property
@@ -287,6 +292,7 @@ class HandRolledOrchestrator:
         provider_id: str,
         *,
         break_glass_reason: str | None = None,
+        full_labs: bool = False,
     ) -> PatientSummary:
         """Run gate → parallel retrieval → synthesis → verification (M1 lifecycle).
 
@@ -332,8 +338,15 @@ class HandRolledOrchestrator:
             #    is read *through the cache* (M2-4): a prewarmed chart is served
             #    warm, a cold one is fetched live and populated for the next
             #    reader (and for this patient's follow-up turns).
+            # full_labs (opt-in "analyse everything") bypasses the cache and the
+            # lab bound; the default path reads the bounded set through the cache.
+            critical_set_coro = (
+                get_critical_set(patient_id, client=self._fhir, full_labs=True)
+                if full_labs
+                else cached_critical_set(patient_id, client=self._fhir, cache=self._cache)
+            )
             critical_set, deltas_result = await asyncio.gather(
-                cached_critical_set(patient_id, client=self._fhir, cache=self._cache),
+                critical_set_coro,
                 get_deltas_since_last_visit(patient_id, client=self._fhir),
             )
             deltas: Deltas = deltas_result.data
@@ -382,6 +395,7 @@ class HandRolledOrchestrator:
                 verified=verified,
                 missing=missing,
                 data_as_of=critical_set.retrieved_at,
+                labs_omitted=critical_set.labs_omitted,
             )
 
     async def stream_patient_summary(
@@ -532,6 +546,7 @@ class HandRolledOrchestrator:
         provider_id: str,
         *,
         break_glass_reason: str | None = None,
+        full_labs: bool = False,
     ) -> tuple[PatientSummary, str | None]:
         """Run the gated summary and, if access is granted, pin a conversation.
 
@@ -543,7 +558,7 @@ class HandRolledOrchestrator:
         """
 
         result = await self.patient_summary(
-            patient_id, provider_id, break_glass_reason=break_glass_reason
+            patient_id, provider_id, break_glass_reason=break_glass_reason, full_labs=full_labs
         )
         if result.refused:
             return result, None
