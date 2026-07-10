@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     # --- Agent ---
     agent_port: int = 8000
     log_level: str = "INFO"
+    #: The agent's own public base URL — used to build the SMART launch
+    #: ``redirect_uri`` (``{agent_base_url}/launch/callback``). Must match a
+    #: redirect URI registered on the OpenEMR OAuth client. On Railway set this
+    #: to the agent's public URL.
+    agent_base_url: str = "http://localhost:8000"
 
     # --- Load testing ---
     # When true, ``LLMClient`` returns a canned, source-bound summary/answer

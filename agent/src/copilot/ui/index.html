@@ -368,7 +368,22 @@ async function ask() {
   }
 }
 
-loadPatients();
+// On a SMART launch, OpenEMR sends the clinician here as /?patient=<id>
+// (their session cookie authenticates the reads); auto-open that patient.
+async function init() {
+  await loadPatients();
+  const launched = new URLSearchParams(location.search).get("patient");
+  if (!launched) return;
+  const sel = $("patient");
+  if (![...sel.options].some((o) => o.value === launched)) {
+    const o = document.createElement("option");
+    o.value = launched; o.textContent = "Launched patient  ·  " + launched.slice(0, 8);
+    sel.appendChild(o);
+  }
+  sel.value = launched;
+  openChart();
+}
+init();
 </script>
 </body>
 </html>

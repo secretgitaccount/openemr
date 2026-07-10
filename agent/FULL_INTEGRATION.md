@@ -28,19 +28,48 @@ How it was verified:
   (`demographics.php?set_pid=1`) — the "SMART Enabled Apps" card renders with a
   **Launch** button labelled **Clinical Co-Pilot**. (Repro script: `tmp/debug.php`.)
 
+## Milestone 2 — the SMART handshake ✅ BUILT + real-stack verified (local)
+
+The button now has a target: the agent performs the full SMART EHR-launch
+`authorization_code` handshake and reads as the launched clinician.
+
+New code:
+- `copilot/openemr/smart.py` — issuer pinning (host-based), **endpoint discovery**
+  (`.well-known/smart-configuration`), authorize-URL builder, and the code→token
+  exchange that **keeps the `patient` launch context** (the canonical
+  `TokenResponse` drops it). `StaticTokenSource` wraps the clinician token.
+- `copilot/smart_session.py` — one-time CSRF launch-state (carries the discovered
+  token endpoint across the redirect) + server-side session store (opaque
+  HttpOnly cookie → clinician token + patient).
+- `copilot/api/launch.py` — `GET /launch` and `GET /launch/callback`.
+- `copilot/api/summary.py` — `get_orchestrator` is now **session-aware**: with a
+  SMART session, every read + the role gate borrow *that clinician's* token
+  (`StaticTokenSource`); otherwise it falls back to the `admin` password grant.
+- `ui/index.html` — on `/?patient=<id>` (where the callback lands) auto-opens that
+  patient.
+- 13 unit/integration tests (`tests/test_smart.py`, `tests/test_launch.py`).
+
+Real-stack verification (agent run locally against the dev OpenEMR):
+- `/launch` discovers OpenEMR's advertised endpoints (**https:9300**, not the
+  http:8300 read API) and redirects to `/authorize` with correct
+  `response_type/client_id/redirect_uri/scope(launch)/state/aud/launch`.
+- Real OpenEMR `/authorize` **accepts the client and the `aud`** — the only
+  remaining error is *"launch parameter … did not originate from this server"*,
+  the expected response to a synthetic launch token.
+- **What's left to fully prove it:** a *real* launch token, which only the button
+  click in a logged-in OpenEMR browser mints (the click-through). Networking note:
+  the agent must be reachable from the browser at the registered `redirect_uri`
+  host, and OpenEMR's advertised issuer must match `agent`'s host pin.
+
 ## Remaining build steps
 
-1. **Agent `/launch` endpoint** — receive OpenEMR's EHR launch (`?launch=&iss=&aud=`),
-   run the SMART `authorization_code` handshake, read the **doctor + patient** from
-   the launch/token context.
-2. **Per-doctor token source** — use that user-bound token for reads instead of the
-   fixed `admin` password grant (the token source is already abstracted, so this is
-   contained).
-3. **Schedule-scoped picker** — populate any patient list from `get_todays_schedule`
+1. **Live click-through** — click the launch button in a logged-in OpenEMR and
+   confirm the agent opens on that patient as that clinician (the one manual step).
+2. **Schedule-scoped picker** — populate any patient list from `get_todays_schedule`
    (already built) rather than `GET /Patient`.
-4. **Broaden the panel gate** — also honor `Patient.generalPractitioner` / care team,
+3. **Broaden the panel gate** — also honor `Patient.generalPractitioner` / care team,
    not just today's schedule.
-5. **Hardening tail** (from DEPLOYED_BUILD.md): `/ready` audit-globals assertion,
+4. **Hardening tail** (from DEPLOYED_BUILD.md): `/ready` audit-globals assertion,
    ≥2 replicas, circuit breakers, private networking, verify at-rest encryption.
 
 ## Notes / gotchas found
