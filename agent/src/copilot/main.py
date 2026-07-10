@@ -17,6 +17,7 @@ from copilot.api.summary import router as summary_router
 from copilot.api.chat import router as chat_router
 from copilot.api.prewarm import router as prewarm_router
 from copilot.api.ui import router as ui_router
+from copilot.api.launch import router as launch_router
 from copilot.middleware import CorrelationIdMiddleware
 
 
@@ -48,6 +49,7 @@ def create_app() -> FastAPI:
     app.include_router(chat_router)  # M2-5 conversation: start + follow-up messages
     app.include_router(prewarm_router)  # M2-5 prewarm: POST /prewarm
     app.include_router(ui_router)  # demo UI: GET / (page) + GET /patients
+    app.include_router(launch_router)  # SMART EHR launch: GET /launch + /launch/callback
     # (later PRPs append their single include line here)
 
     return app

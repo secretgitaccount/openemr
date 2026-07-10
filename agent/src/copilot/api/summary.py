@@ -19,13 +19,15 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator, Iterator
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import StreamingResponse
 
 from copilot.config import get_settings
 from copilot.logging import get_logger
 from copilot.openemr.client import FhirClient
 from copilot.openemr.oauth import TokenProvider, register_client
+from copilot.openemr.smart import StaticTokenSource
+from copilot.smart_session import SESSION_COOKIE, get_session
 from copilot.orchestrator.controller import (
     CaveatEvent,
     ClaimEvent,
@@ -66,28 +68,38 @@ _DEV_PROVIDER_ID = "admin"
 # ---------------------------------------------------------------------------
 
 
-async def get_orchestrator() -> AsyncIterator[Orchestrator]:
+async def get_orchestrator(request: Request) -> AsyncIterator[Orchestrator]:
     """Yield a fully-wired :class:`Orchestrator` for the life of one request.
 
-    Registers (or reuses) the OAuth2 client, builds a user-bound
-    :class:`TokenProvider`, and opens a :class:`FhirClient` so every read happens
-    as the clinician (FR-3). The client is closed when the request finishes.
-    Tests override this dependency with a fake orchestrator, so no OAuth or live
-    stack is touched in unit tests.
+    Identity is resolved per request:
+
+    * If the caller carries a **SMART launch session** (the clinician launched
+      the agent from OpenEMR), reads borrow *that clinician's* token
+      (:class:`StaticTokenSource`) — the production-correct borrowed identity.
+    * Otherwise the agent falls back to the dev **password grant** as ``admin``
+      (the standalone demo path).
+
+    Either way the same token source drives the FHIR reads *and* the role gate,
+    so a non-clinical identity is refused before any clinical read (FR-3). Tests
+    override this dependency with a fake orchestrator, so no OAuth or live stack
+    is touched in unit tests.
     """
 
     settings = get_settings()
-    creds = register_client(settings=settings)
-    provider = TokenProvider(
-        settings.openemr_dev_user,
-        settings.openemr_dev_pass,
-        settings=settings,
-        credentials=creds,
-    )
-    async with FhirClient(provider, settings=settings) as client:
-        # ``provider`` is also the role gate's token source (M2-3): the summary
-        # lifecycle refuses a non-clinical identity before any clinical read.
-        yield HandRolledOrchestrator(fhir_client=client, token_source=provider)
+    token_source: object
+    session = get_session(request.cookies.get(SESSION_COOKIE))
+    if session is not None:
+        token_source = StaticTokenSource(session.access_token)
+    else:
+        creds = register_client(settings=settings)
+        token_source = TokenProvider(
+            settings.openemr_dev_user,
+            settings.openemr_dev_pass,
+            settings=settings,
+            credentials=creds,
+        )
+    async with FhirClient(token_source, settings=settings) as client:
+        yield HandRolledOrchestrator(fhir_client=client, token_source=token_source)
 
 
 # ---------------------------------------------------------------------------
