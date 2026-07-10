@@ -53,19 +53,22 @@ Real-stack verification (agent run locally against the dev OpenEMR):
 - `/launch` discovers OpenEMR's advertised endpoints (**https:9300**, not the
   http:8300 read API) and redirects to `/authorize` with correct
   `response_type/client_id/redirect_uri/scope(launch)/state/aud/launch`.
-- Real OpenEMR `/authorize` **accepts the client and the `aud`** — the only
-  remaining error is *"launch parameter … did not originate from this server"*,
-  the expected response to a synthetic launch token.
-- **What's left to fully prove it:** a *real* launch token, which only the button
-  click in a logged-in OpenEMR browser mints (the click-through). Networking note:
-  the agent must be reachable from the browser at the registered `redirect_uri`
-  host, and OpenEMR's advertised issuer must match `agent`'s host pin.
+- Real OpenEMR `/authorize` **accepts the client and the `aud`**.
+- **✅ Live click-through VERIFIED (2026-07-10):** logged into OpenEMR at
+  `https://localhost:9300`, opened a patient, clicked the "Clinical Co-Pilot"
+  launch button → agent logs show `launch_started` → `code_exchanged`
+  (`has_patient: true, has_refresh: true`) → `session_opened` → the summary loaded
+  for the launched patient **as the logged-in clinician**. Browser test needs the
+  agent on `localhost:8000` with the SMART client (OPENEMR_CLIENT_ID/SECRET) and
+  OpenEMR accessed at its advertised origin (`https://localhost:9300`) so the
+  authorize session is same-origin.
+- **Known polish:** OpenEMR presents its own OAuth login at authorize (a second
+  login). Making it seamless is the **silent launch** refinement
+  (`skip_ehr_launch_authorization_flow` / ARCHITECTURE §6) — cosmetic, deferred.
 
 ## Remaining build steps
 
-1. **Live click-through** — click the launch button in a logged-in OpenEMR and
-   confirm the agent opens on that patient as that clinician (the one manual step).
-2. **Schedule-scoped picker** — populate any patient list from `get_todays_schedule`
+1. **Schedule-scoped picker** — populate any patient list from `get_todays_schedule`
    (already built) rather than `GET /Patient`.
 3. **Broaden the panel gate** — also honor `Patient.generalPractitioner` / care team,
    not just today's schedule.
