@@ -206,6 +206,18 @@ def stream_summary(result: PatientSummary) -> Iterator[str]:
         if result.labs_omitted > 0:
             yield _line({"type": "lab_overflow", "omitted": result.labs_omitted})
 
+    # The active problem list, rendered verbatim (not LLM-curated) with each
+    # Condition's source — shown even when synthesis degraded to no summary.
+    for problem in result.problems:
+        yield _line(
+            {
+                "type": "problem",
+                "text": problem.name,
+                "status": problem.clinical_status,
+                "sources": _sources([problem.source]),
+            }
+        )
+
     # FR-12: name what could not be retrieved as an explicit notice — "couldn't
     # retrieve X", never a silent gap. When retrieval succeeded but the model
     # step failed, the summary itself is the missing piece.

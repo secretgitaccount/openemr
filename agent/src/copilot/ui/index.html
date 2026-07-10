@@ -53,6 +53,14 @@
   .card.summary { background: var(--accent); color: #fff; border-color: var(--accent-ink); }
   .card.summary .banner { padding-bottom: 4px; }
   .card.summary .body { padding-top: 6px; }
+  /* Known medical problems — styled like the summary box, but red. */
+  .card.problems { background: #b3261e; color: #fff; border-color: #8f1d17; }
+  .card.problems .banner { background: #8f1d17; }
+  .card.problems .body { padding-top: 8px; }
+  .card.problems .prob { padding: 6px 0; border-top: 1px solid rgba(255,255,255,.20); font-size: 14px; line-height: 1.4; }
+  .card.problems .prob:first-child { border-top: 0; padding-top: 0; }
+  .card.problems .prob .st { opacity: .78; font-size: 12px; margin-left: 6px; text-transform: capitalize; }
+  .card.problems .none { opacity: .85; font-size: 13.5px; }
   .headline { font-size: 16px; font-weight: 650; line-height: 1.5; }
 
   /* claim lists */
@@ -141,6 +149,10 @@
 
   <!-- RIGHT column -->
   <div class="col">
+    <div id="problemsCard" class="card problems hidden">
+      <div class="banner">Known medical problems</div>
+      <div class="body" id="problemsBody"></div>
+    </div>
     <div id="caveatsCard" class="card caveats hidden">
       <div class="banner">Caveats</div>
       <div class="body">
@@ -250,7 +262,7 @@ async function loadPatients() {
 }
 
 function hideAll() {
-  ["refusal", "flagsCard", "summaryCard", "mustCard", "changesCard", "caveatsCard", "askCard"]
+  ["refusal", "flagsCard", "summaryCard", "mustCard", "changesCard", "problemsCard", "caveatsCard", "askCard"]
     .forEach((id) => $(id).classList.add("hidden"));
 }
 
@@ -265,7 +277,7 @@ async function openChart(fullLabs = false) {
     (fullLabs ? "Re-analysing the full lab history — this takes longer…"
               : "Retrieving chart and synthesising a grounded summary…") + "</span>";
 
-  const p = { headline: null, must: [], changed: [], flags: [], caveats: [], notices: [], asOf: null, refused: null, overflow: null };
+  const p = { headline: null, must: [], changed: [], flags: [], problems: [], caveats: [], notices: [], asOf: null, refused: null, overflow: null };
   const render = () => {
     if (p.refused) {
       hideAll();
@@ -286,6 +298,16 @@ async function openChart(fullLabs = false) {
     }
     if (p.must.length) { $("mustCard").classList.remove("hidden"); renderClaims($("mustBody"), p.must, MUST_KNOWS_INITIAL); }
     if (p.changed.length) { $("changesCard").classList.remove("hidden"); renderClaims($("changesBody"), p.changed, CHANGES_INITIAL); }
+    if (p.problems.length) {
+      $("problemsCard").classList.remove("hidden");
+      const b = $("problemsBody"); b.innerHTML = "";
+      p.problems.forEach((pr) => {
+        const d = document.createElement("div"); d.className = "prob";
+        d.textContent = pr.text;
+        if (pr.status) { const s = document.createElement("span"); s.className = "st"; s.textContent = "· " + pr.status; d.appendChild(s); }
+        b.appendChild(d);
+      });
+    }
     if (p.overflow || p.caveats.length || p.asOf || p.notices.length) {
       $("caveatsCard").classList.remove("hidden");
       const ul = $("caveatsBody"); ul.innerHTML = "";
@@ -322,6 +344,7 @@ async function openChart(fullLabs = false) {
         case "must_know": p.must.push(ev); break;
         case "what_changed": p.changed.push(ev); break;
         case "flag": p.flags.push(ev); break;
+        case "problem": p.problems.push(ev); break;
         case "caveat": p.caveats.push(ev.text); break;
         case "notice": p.notices.push(ev.text); break;
         case "data_as_of": p.asOf = ev.timestamp; break;

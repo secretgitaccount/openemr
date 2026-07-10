@@ -186,7 +186,10 @@ async def test_get_problem_list_maps_status_and_onset(settings: Settings) -> Non
     assert problem.name == "Type 2 diabetes mellitus"
     assert problem.clinical_status == "active"
     assert problem.onset == date(2024, 3, 1)
-    assert route.calls.last.request.url.params["clinical-status"] == "active"
+    # Filtering is client-side: OpenEMR ignores the clinical-status search param,
+    # so we must NOT send it (or the whole problem list comes back empty).
+    assert route.calls.last.request.url.params["patient"] == PATIENT
+    assert "clinical-status" not in route.calls.last.request.url.params
 
 
 # ---------------------------------------------------------------------------

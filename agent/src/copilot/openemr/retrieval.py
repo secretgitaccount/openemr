@@ -551,20 +551,23 @@ async def get_problem_list(
     *,
     client: FhirClient,
 ) -> ToolResult[list[Problem]]:
-    """Open problems for a patient (``Condition?clinical-status=active``).
+    """Open problems for a patient (the problem list).
 
-    A failed fetch degrades to a partial result naming ``problems``.
+    Queries ``Condition?patient=`` and filters to active problems **client-side**:
+    OpenEMR's FHIR does not honour the ``clinical-status`` search param (it
+    returns an empty bundle), so filtering server-side silently drops the whole
+    problem list. A failed fetch degrades to a partial result naming ``problems``.
     """
 
     try:
-        bundle = await client.get(
-            "/Condition",
-            params={"patient": patient_id, "clinical-status": "active"},
-        )
+        bundle = await client.get("/Condition", params={"patient": patient_id})
     except FhirError:
         return _partial(_PROBLEMS)
-    problems, sources = _map_all(_bundle_resources(bundle), _map_problem)
-    return ToolResult(data=problems, sources=sources)
+    problems, _ = _map_all(_bundle_resources(bundle), _map_problem)
+    # Keep active / unknown-status problems; drop only the explicitly closed ones.
+    inactive = {"resolved", "inactive", "remission"}
+    active = [p for p in problems if (p.clinical_status or "active").lower() not in inactive]
+    return ToolResult(data=active, sources=[p.source for p in active])
 
 
 def _since_param(since: date | datetime | str | None) -> str | None:

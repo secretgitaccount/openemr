@@ -54,7 +54,7 @@ from copilot.orchestrator.cache import Cache, TTLCache
 from copilot.orchestrator.conversation import ConversationStore
 from copilot.openemr.retrieval import get_critical_set
 from copilot.orchestrator.prewarm import cached_critical_set, critical_set_key
-from copilot.schemas.clinical import CriticalSet, Deltas, PanelDecision
+from copilot.schemas.clinical import CriticalSet, Deltas, PanelDecision, Problem
 from copilot.schemas.conversation import ConversationTurn, GroundedAnswer
 from copilot.schemas.output import Claim
 from copilot.verification.gate import (
@@ -119,6 +119,10 @@ class PatientSummary(BaseModel):
     labs_omitted: int = Field(
         default=0,
         description="Lab records available but not analysed (bounded away); 0 when full labs analysed.",
+    )
+    problems: list[Problem] = Field(
+        default_factory=list,
+        description="The patient's active problem list (Conditions), rendered verbatim.",
     )
 
     @property
@@ -373,6 +377,7 @@ class HandRolledOrchestrator:
                     decision=decision,
                     missing=missing,
                     data_as_of=critical_set.retrieved_at,
+                    problems=list(critical_set.problems),
                 )
 
             # 4. Verification (FR-10) — drop ungrounded claims, attach rule flags.
@@ -396,6 +401,7 @@ class HandRolledOrchestrator:
                 missing=missing,
                 data_as_of=critical_set.retrieved_at,
                 labs_omitted=critical_set.labs_omitted,
+                problems=list(critical_set.problems),
             )
 
     async def stream_patient_summary(
