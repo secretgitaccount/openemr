@@ -62,9 +62,14 @@ Real-stack verification (agent run locally against the dev OpenEMR):
   agent on `localhost:8000` with the SMART client (OPENEMR_CLIENT_ID/SECRET) and
   OpenEMR accessed at its advertised origin (`https://localhost:9300`) so the
   authorize session is same-origin.
-- **Known polish:** OpenEMR presents its own OAuth login at authorize (a second
-  login). Making it seamless is the **silent launch** refinement
-  (`skip_ehr_launch_authorization_flow` / ARCHITECTURE §6) — cosmetic, deferred.
+- **✅ Silent launch DONE (2026-07-10):** setting the client's
+  `skip_ehr_launch_authorization_flow=1` (with the `oauth_ehr_launch_authorization_flow_skip`
+  global on) makes OpenEMR issue the code from the active session with **no login
+  and no consent screen** — button → summary in one hop. The gate is OpenEMR's
+  `AuthorizationController::oauthAuthorizationFlow` (line ~593): launch present +
+  skip flags + `getLoggedInCoreUserUuid` non-empty → `processAuthorizeFlowForLaunch`.
+  NOTE: this is an OpenEMR **client/global config**, not agent code — must be set
+  again on the Railway OpenEMR when deploying full-integration.
 
 ## Remaining build steps
 
