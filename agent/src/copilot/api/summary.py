@@ -233,6 +233,18 @@ def stream_summary(result: PatientSummary) -> Iterator[str]:
     if result.data_as_of is not None:
         yield _line({"type": "data_as_of", "timestamp": result.data_as_of.isoformat()})
 
+    # When Claude generated this summary (may predate the request if served from
+    # the in-memory cache because the chart was unchanged) — drives the UI's
+    # "Generated <date>" stamp + Regenerate control.
+    if result.generated_at is not None:
+        yield _line(
+            {
+                "type": "generated",
+                "at": result.generated_at.isoformat(),
+                "from_cache": result.from_cache,
+            }
+        )
+
 
 # ---------------------------------------------------------------------------
 # Progressive stream serialisation (M3-2) — render each stage event as it lands

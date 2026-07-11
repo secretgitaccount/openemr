@@ -34,11 +34,12 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from copilot.config import get_settings
 from copilot.llm.client import LLMClient, LLMError
 from copilot.logging import get_logger
 from copilot.observability import trace
@@ -54,6 +55,7 @@ from copilot.orchestrator.cache import Cache, TTLCache
 from copilot.orchestrator.conversation import ConversationStore
 from copilot.openemr.retrieval import get_critical_set
 from copilot.orchestrator.prewarm import cached_critical_set, critical_set_key
+from copilot.orchestrator.summary_cache import CachedSummary, cache_key, summary_cache
 from copilot.schemas.clinical import CriticalSet, Deltas, PanelDecision, Problem
 from copilot.schemas.conversation import ConversationTurn, GroundedAnswer
 from copilot.schemas.output import Claim
@@ -85,6 +87,17 @@ logger = get_logger(__name__)
 # The ``missing`` marker used when the LLM synthesis step itself fails: the
 # retrieval succeeded but no trustworthy summary could be produced (FR-11).
 _SUMMARY_UNIT = "summary"
+
+# Bump when the prompt or verification rules change, to invalidate every cached
+# summary (the model is already in the version, so a model swap invalidates
+# automatically). See copilot.orchestrator.summary_cache.
+_SUMMARY_PROMPT_VERSION = "v1"
+
+
+def _generation_version() -> str:
+    """Cache-invalidation tag for generated summaries: model + prompt/rules version."""
+
+    return f"{get_settings().anthropic_model}:{_SUMMARY_PROMPT_VERSION}"
 
 
 class PatientSummary(BaseModel):
@@ -123,6 +136,14 @@ class PatientSummary(BaseModel):
     problems: list[Problem] = Field(
         default_factory=list,
         description="The patient's active problem list (Conditions), rendered verbatim.",
+    )
+    generated_at: datetime | None = Field(
+        default=None,
+        description="When Claude generated this summary (may predate the request if served from cache).",
+    )
+    from_cache: bool = Field(
+        default=False,
+        description="True when the summary was served from the in-memory cache (chart unchanged).",
     )
 
     @property
@@ -297,6 +318,7 @@ class HandRolledOrchestrator:
         *,
         break_glass_reason: str | None = None,
         full_labs: bool = False,
+        force_regenerate: bool = False,
     ) -> PatientSummary:
         """Run gate → parallel retrieval → synthesis → verification (M1 lifecycle).
 
@@ -361,38 +383,56 @@ class HandRolledOrchestrator:
             # CriticalSet.deltas).
             grounded_input = critical_set.model_copy(update={"deltas": deltas})
 
-            # 3. Synthesis (FR-8) — degrade to no summary rather than fabricate.
-            try:
-                summary = await self._llm.summarize(critical_set, deltas)
-            except LLMError:
-                logger.warning("patient_summary.llm_unavailable", patient_id=patient_id)
-                missing = _merge_missing(missing, [_SUMMARY_UNIT])
+            # 3. Synthesis (FR-8) — served from the in-memory cache when the chart
+            # is unchanged (skip the expensive Claude call). Freshness is keyed by
+            # a hash of the retrieved data, not a clock. The panel + role gate and
+            # audit already ran above, so this is a content cache only — it never
+            # authorizes or bypasses the audit trail. See summary_cache.py.
+            key = cache_key(patient_id, critical_set, deltas, _generation_version())
+            cached = None if force_regenerate else summary_cache.get(key)
+            if cached is not None:
+                verified = cached.verified
+                generated_at = cached.generated_at
+                from_cache = True
                 span.update(
-                    output={"in_panel": True, "summarized": False},
+                    output={"in_panel": True, "summarized": True, "cache": "hit"},
                     metadata={"missing": missing},
                 )
-                return PatientSummary(
-                    patient_id=patient_id,
-                    provider_id=provider_id,
-                    decision=decision,
-                    missing=missing,
-                    data_as_of=critical_set.retrieved_at,
-                    problems=list(critical_set.problems),
+            else:
+                try:
+                    summary = await self._llm.summarize(critical_set, deltas)
+                except LLMError:
+                    logger.warning("patient_summary.llm_unavailable", patient_id=patient_id)
+                    missing = _merge_missing(missing, [_SUMMARY_UNIT])
+                    span.update(
+                        output={"in_panel": True, "summarized": False},
+                        metadata={"missing": missing},
+                    )
+                    return PatientSummary(
+                        patient_id=patient_id,
+                        provider_id=provider_id,
+                        decision=decision,
+                        missing=missing,
+                        data_as_of=critical_set.retrieved_at,
+                        problems=list(critical_set.problems),
+                        generated_at=datetime.now(UTC),
+                    )
+
+                # 4. Verification (FR-10) — drop ungrounded claims, attach flags.
+                verified = verify(summary, grounded_input)
+                generated_at = datetime.now(UTC)
+                summary_cache.put(key, CachedSummary(verified=verified, generated_at=generated_at))
+                from_cache = False
+                span.update(
+                    output={"in_panel": True, "summarized": True, "cache": "miss"},
+                    metadata={
+                        "must_knows": len(verified.summary.must_knows),
+                        "whats_changed": len(verified.summary.whats_changed),
+                        "dropped": len(verified.dropped),
+                        "flags": len(verified.flags),
+                        "missing": missing,
+                    },
                 )
-
-            # 4. Verification (FR-10) — drop ungrounded claims, attach rule flags.
-            verified = verify(summary, grounded_input)
-
-            span.update(
-                output={"in_panel": True, "summarized": True},
-                metadata={
-                    "must_knows": len(verified.summary.must_knows),
-                    "whats_changed": len(verified.summary.whats_changed),
-                    "dropped": len(verified.dropped),
-                    "flags": len(verified.flags),
-                    "missing": missing,
-                },
-            )
             return PatientSummary(
                 patient_id=patient_id,
                 provider_id=provider_id,
@@ -402,6 +442,8 @@ class HandRolledOrchestrator:
                 data_as_of=critical_set.retrieved_at,
                 labs_omitted=critical_set.labs_omitted,
                 problems=list(critical_set.problems),
+                generated_at=generated_at,
+                from_cache=from_cache,
             )
 
     async def stream_patient_summary(
@@ -553,6 +595,7 @@ class HandRolledOrchestrator:
         *,
         break_glass_reason: str | None = None,
         full_labs: bool = False,
+        force_regenerate: bool = False,
     ) -> tuple[PatientSummary, str | None]:
         """Run the gated summary and, if access is granted, pin a conversation.
 
@@ -564,7 +607,11 @@ class HandRolledOrchestrator:
         """
 
         result = await self.patient_summary(
-            patient_id, provider_id, break_glass_reason=break_glass_reason, full_labs=full_labs
+            patient_id,
+            provider_id,
+            break_glass_reason=break_glass_reason,
+            full_labs=full_labs,
+            force_regenerate=force_regenerate,
         )
         if result.refused:
             return result, None
