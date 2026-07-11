@@ -192,6 +192,10 @@ async def start_conversation_endpoint(
         default=False,
         description="Analyse the full lab history instead of the recent+abnormal slice (slower, costlier).",
     ),
+    regenerate: bool = Query(
+        default=False,
+        description="Force a fresh Claude generation, ignoring (and refreshing) the cached summary.",
+    ),
     orchestrator: HandRolledOrchestrator = Depends(get_chat_orchestrator),
 ) -> StreamingResponse:
     """Start a chart conversation and stream the cited summary + ``conversation_id``.
@@ -204,7 +208,11 @@ async def start_conversation_endpoint(
     provider_id = _provider_id(x_provider_id)
     break_glass_reason = _break_glass_reason(x_break_glass_reason)
     result, conversation_id = await orchestrator.start_conversation(
-        patient_id, provider_id, break_glass_reason=break_glass_reason, full_labs=full_labs
+        patient_id,
+        provider_id,
+        break_glass_reason=break_glass_reason,
+        full_labs=full_labs,
+        force_regenerate=regenerate,
     )
 
     return StreamingResponse(

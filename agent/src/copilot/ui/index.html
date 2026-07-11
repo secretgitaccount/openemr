@@ -39,6 +39,9 @@
   button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 10px 18px;
            font-weight: 700; letter-spacing: .4px; text-transform: uppercase; cursor: pointer; font: inherit; }
   button:hover { background: var(--accent-ink); }
+  .genrow { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .regen { background: #fff; color: var(--accent-ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px 11px; font: inherit; font-size: 12px; cursor: pointer; }
+  .regen:hover { background: var(--chip-bg); }
   button:disabled { opacity: .5; cursor: default; }
   .controls .load { align-self: end; }
 
@@ -126,6 +129,7 @@
       </div>
       <button class="load" id="load" onclick="openChart()">Load chart</button>
       <div class="loaded">Chart loaded:<span id="loadedAt">—</span></div>
+      <div class="genrow hidden" id="genRow"><span id="genInfo"></span><button class="regen" id="regenBtn" onclick="regenerate()">Regenerate</button></div>
     </div>
 
     <div id="refusal" class="hidden"></div>
@@ -184,6 +188,8 @@ const BREAK_GLASS_REASON = "Reviewing chart";
 const $ = (id) => document.getElementById(id);
 let conversationId = null;
 let loading = false;
+let lastFullLabs = false;
+function regenerate() { openChart(lastFullLabs, true); }
 
 function stamp() {
   const d = new Date(), p = (n) => String(n).padStart(2, "0");
@@ -270,13 +276,14 @@ async function loadPatients() {
 }
 
 function hideAll() {
-  ["refusal", "flagsCard", "summaryCard", "mustCard", "changesCard", "problemsCard", "caveatsCard", "askCard"]
+  ["refusal", "flagsCard", "summaryCard", "mustCard", "changesCard", "problemsCard", "caveatsCard", "askCard", "genRow"]
     .forEach((id) => $(id).classList.add("hidden"));
 }
 
-async function openChart(fullLabs = false) {
+async function openChart(fullLabs = false, regenerate = false) {
   const pid = $("patient").value;
   if (!pid || loading) return;
+  lastFullLabs = fullLabs;
   loading = true; $("load").disabled = true;
   hideAll();
   conversationId = null; $("chatlog").innerHTML = "";
@@ -285,7 +292,7 @@ async function openChart(fullLabs = false) {
     (fullLabs ? "Re-analysing the full lab history — this takes longer…"
               : "Retrieving chart and synthesising a grounded summary…") + "</span>";
 
-  const p = { headline: null, must: [], changed: [], flags: [], problems: [], caveats: [], notices: [], asOf: null, refused: null, overflow: null };
+  const p = { headline: null, must: [], changed: [], flags: [], problems: [], caveats: [], notices: [], asOf: null, refused: null, overflow: null, generated: null };
   const render = () => {
     if (p.refused) {
       hideAll();
@@ -338,10 +345,20 @@ async function openChart(fullLabs = false) {
       const n = $("notices"); n.innerHTML = "";
       p.notices.forEach((t) => { const d = document.createElement("div"); d.className = "notice"; d.textContent = "⚠ " + t; n.appendChild(d); });
     }
+    if (p.generated) {
+      $("genRow").classList.remove("hidden");
+      const dstr = new Date(p.generated.at).toLocaleString();
+      $("genInfo").textContent = p.generated.from_cache
+        ? `Summary generated ${dstr} · chart unchanged since (served from cache)`
+        : `Summary generated ${dstr}`;
+    }
   };
 
   try {
-    const url = `/patients/${encodeURIComponent(pid)}/conversation` + (fullLabs ? "?full_labs=true" : "");
+    const qp = new URLSearchParams();
+    if (fullLabs) qp.set("full_labs", "true");
+    if (regenerate) qp.set("regenerate", "true");
+    const url = `/patients/${encodeURIComponent(pid)}/conversation` + (qp.toString() ? `?${qp}` : "");
     const resp = await fetch(url, {
       method: "POST", headers: { "X-Break-Glass-Reason": BREAK_GLASS_REASON },
     });
@@ -356,6 +373,7 @@ async function openChart(fullLabs = false) {
         case "caveat": p.caveats.push(ev.text); break;
         case "notice": p.notices.push(ev.text); break;
         case "data_as_of": p.asOf = ev.timestamp; break;
+        case "generated": p.generated = ev; break;
         case "lab_overflow": p.overflow = ev.omitted; break;
         case "conversation": conversationId = ev.conversation_id; break;
       }
