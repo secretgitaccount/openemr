@@ -194,17 +194,25 @@ function recency(claim) {
   (claim.sources || []).forEach((s) => { const t = s.timestamp ? Date.parse(s.timestamp) : NaN; if (!isNaN(t)) m = Math.max(m, t); });
   return m;
 }
-function chip(s) {
-  const c = document.createElement("span"); c.className = "chip";
-  c.textContent = `${s.resource_type}/${(s.id || "").slice(0, 8)}`;
-  c.title = s.source_id + (s.timestamp ? ` · ${s.timestamp}` : "");
-  return c;
-}
+// One chip per distinct resource *type* (deduped) — e.g. "Observation" shown
+// once, not "Observation/ab12..." repeated. Hover shows the underlying ids.
 function chipRow(sources) {
   const row = document.createElement("div"); row.className = "chips";
-  (sources || []).forEach((s) => row.appendChild(chip(s)));
+  const byType = new Map();
+  (sources || []).forEach((s) => {
+    if (!byType.has(s.resource_type)) byType.set(s.resource_type, []);
+    byType.get(s.resource_type).push(s.source_id);
+  });
+  byType.forEach((ids, type) => {
+    const c = document.createElement("span"); c.className = "chip";
+    c.textContent = type;
+    c.title = ids.join(", ");
+    row.appendChild(c);
+  });
   return row;
 }
+// Strip Synthea's numeric suffixes from names for display (keep the id).
+function cleanName(n) { return (n || "").replace(/\d+/g, "").replace(/\s+/g, " ").trim(); }
 function claimItem(c) {
   const li = document.createElement("li");
   const t = document.createElement("div"); t.textContent = c.text; li.appendChild(t);
@@ -252,7 +260,7 @@ async function loadPatients() {
     const sel = $("patient"); sel.innerHTML = "";
     list.forEach((p) => {
       const o = document.createElement("option");
-      o.value = p.id; o.textContent = `${p.name}  ·  ${p.id.slice(0, 8)}`;
+      o.value = p.id; o.textContent = `${cleanName(p.name)}  ·  ${p.id.slice(0, 8)}`;
       sel.appendChild(o);
     });
     if (!list.length) sel.innerHTML = '<option value="">No patients found</option>';
