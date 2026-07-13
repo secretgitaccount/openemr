@@ -56,7 +56,7 @@ from copilot.orchestrator.conversation import ConversationStore
 from copilot.openemr.retrieval import get_critical_set
 from copilot.orchestrator.prewarm import cached_critical_set, critical_set_key
 from copilot.orchestrator.summary_cache import CachedSummary, cache_key, summary_cache
-from copilot.schemas.clinical import CriticalSet, Deltas, PanelDecision, Problem
+from copilot.schemas.clinical import Deltas, PanelDecision, Problem
 from copilot.schemas.conversation import ConversationTurn, GroundedAnswer
 from copilot.schemas.output import Claim
 from copilot.verification.gate import (
