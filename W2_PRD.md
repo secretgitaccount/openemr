@@ -38,7 +38,9 @@ dropped. (The **citation contract** is MVP; the **critic** is deferred.)
 
 - **FR-1 `attach_and_extract(patient_id, file_path, doc_type)`** — supports
   `lab_pdf`, `intake_form`; stores source in OpenEMR; returns strict-schema
-  JSON; persists derived facts as FHIR Observations (write path per PRP-00 spike).
+  JSON; persists derived facts as **OpenEMR records via REST** (FHIR-native create
+  is unavailable on this build — PRP-00 spike; the spec allows "FHIR resources
+  **or OpenEMR records**").
 - **FR-2 Strict schemas** — Pydantic, `frozen`, `extra="forbid"`. Lab fields ≥
   {test name, value, unit, reference range, collection date, abnormal flag,
   source citation}. Intake fields ≥ {demographics, chief concern, current
