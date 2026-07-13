@@ -17,7 +17,8 @@ regressions.
 Everything in Week 1 is reused unchanged except **two** deliberate changes,
 both additive:
 - OpenEMR gains a **write path** (was read-only) — source documents + derived
-  FHIR Observations round-trip back in.
+  OpenEMR records (via **REST**; FHIR-native create is unavailable on this build,
+  confirmed by the PRP-00 spike) round-trip back in.
 - Langfuse gains **new trace spans** for the graph + ingestion flows.
 
 ## 2. Architecture (red = new Week 2 infra)
@@ -43,7 +44,7 @@ flowchart TB
         VLM["Claude Vision VLM<br/>extract → strict schema"]:::new
         PDF["pdfplumber<br/>word bounding boxes"]:::new
         DS["Strict schemas<br/>LabReport · IntakeForm · SourceCitation"]:::new
-        FW["OpenEMR FHIR WRITES<br/>DocumentReference · Observation"]:::new
+        FW["OpenEMR REST WRITES<br/>document upload · encounter/vital records"]:::new
     end
 
     subgraph GRAPH["Multi-Agent Graph — LangGraph — NEW"]
@@ -108,7 +109,7 @@ flowchart TB
 
 **Reading it:** four new red subsystems (Ingestion, Graph, RAG, Eval CI) bolt
 onto an otherwise-blue Week 1 core. The only two red edges into blue boxes are
-the new FHIR write path and the new Langfuse spans — the sole places Week 2
+the new REST write path and the new Langfuse spans — the sole places Week 2
 touches Week 1 behavior.
 
 ## 3. Technology decisions
@@ -150,10 +151,14 @@ Docker.
 `attach_and_extract(patient_id, file_path, doc_type)` for `lab_pdf` and
 `intake_form`: store source in OpenEMR → Claude vision → strict schema (schema
 is the source of truth; raw VLM output never bypasses validation) → persist
-derived facts as FHIR Observations → link every fact to `{doc, page, field}`.
-**Bounding-box strategy:** generate text-layer demo PDFs so `pdfplumber` yields
-exact word boxes; one document degraded to image-only to demo graceful
-extraction. FHIR write path pending the P0 spike.
+derived facts as **OpenEMR records via REST** → link every fact to
+`{doc, page, field}`. **Write path (PRP-00 spike, resolved):** FHIR-native create
+is unavailable on this build, so the source PDF is stored via
+`POST /api/patient/:pid/document` and derived values as encounter/vital records,
+made idempotent by a source SHA-256 dedup key (spec allows "FHIR resources **or
+OpenEMR records**"). **Bounding-box strategy:** generate text-layer demo PDFs so
+`pdfplumber` yields exact word boxes; one document degraded to image-only to demo
+graceful extraction.
 
 ## 5. Worker graph — _TBD (Stage 3)_
 
@@ -186,7 +191,7 @@ in the repo (reproducible without a database).
 |---|---|
 | VLM hallucinates fields / overstates confidence | strict schema gate + source citation required per field; critic rejects uncited claims |
 | PDF bbox overlay needs pixel coords Claude can't emit | generate text-layer PDFs → `pdfplumber` exact boxes; no OCR pipeline |
-| OpenEMR FHIR writes may not be supported | **P0 spike** probes write support before building ingestion; REST document-upload fallback |
+| FHIR-native writes unavailable (confirmed by PRP-00 spike) | REST write path: `POST /api/patient/:pid/document` + encounter/vital records; idempotent via source SHA-256; spec permits OpenEMR records |
 | PyTorch bloats the Railway image | small model weights only; consider CPU-only wheels |
 | Multi-replica breaks in-memory graph/session state | documented single-instance constraint; shared store is hardening-tail work |
 

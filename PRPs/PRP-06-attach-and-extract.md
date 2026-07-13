@@ -15,7 +15,8 @@ citations + FHIR refs — as one traced, correlation-ID-carrying operation.
 ## Contract
 - `attach_and_extract(patient_id, file_path, doc_type) -> IngestResult` where
   `IngestResult = {source: SourceRef, extracted: LabReport | IntakeFacts,
-  fhir_refs: list[SourceRef], confidence: float}`.
+  record_refs: list[SourceRef], confidence: float}` (REST-persisted OpenEMR
+  record refs — FHIR-native create is unavailable, see PRP-00 spike).
 - `POST /patients/{patient_id}/documents` (multipart upload, `doc_type` field) →
   runs the tool, streams/returns `IngestResult`. Rejects unknown `doc_type` (422).
 - Order: store source → extract → persist facts → return. correlation_id
@@ -26,11 +27,11 @@ citations + FHIR refs — as one traced, correlation-ID-carrying operation.
 cd agent && . .venv/bin/activate && pytest tests/test_ingest.py tests/test_documents_api.py -q && pytest -q
 ```
 - Integration (stubbed VLM + mocked OpenEMR): end-to-end returns a validated
-  `LabReport` with per-value citations and fhir_refs; bad `doc_type` → 422.
-- **LIVE acceptance smoke (needs key + Railway OpenEMR):** ingest a fixture lab
-  PDF for real → extracted values match the fixture manifest, source doc + at
-  least one Observation land in OpenEMR, and a **second** ingest of the same file
-  does not duplicate (round-trip integrity).
+  `LabReport` with per-value citations and record_refs; bad `doc_type` → 422.
+- **LIVE acceptance smoke (needs Anthropic key + LOCAL docker OpenEMR):** ingest a
+  fixture lab PDF for real → extracted values match the fixture manifest, the
+  source doc + at least one derived record land in local OpenEMR, and a **second**
+  ingest of the same file does not duplicate (round-trip integrity).
 - ruff clean; full suite green; no PHI in logs.
 
 ## Builder prompt (backend-dev → qa)
@@ -40,6 +41,7 @@ cd agent && . .venv/bin/activate && pytest tests/test_ingest.py tests/test_docum
 > model, fhir refs, confidence). Add `api/documents.py` with `POST
 > /patients/{id}/documents` (multipart; rejects unknown doc_type with 422) and
 > mount it in `main.py`. Thread correlation_id through every step. Build + test
-> with stubbed VLM and mocked OpenEMR. Then run the LIVE smoke against Railway
-> OpenEMR with a fixture PDF and confirm values match the manifest, records land,
-> and a re-ingest doesn't duplicate. ruff + full pytest green. Hand to qa.
+> with stubbed VLM and mocked OpenEMR. Then run the LIVE smoke against LOCAL
+> docker OpenEMR (localhost:8300) with a fixture PDF and confirm values match the
+> manifest, records land, and a re-ingest doesn't duplicate. ruff + full pytest
+> green. Hand to qa.
