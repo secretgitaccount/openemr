@@ -110,6 +110,83 @@
   .thinking { color: var(--muted); font-style: italic; }
   .msg.ai .thinking { color: #6a7480; }
   .err { color: var(--refuse-ink); }
+
+  /* --- PRP-13: documents · extraction · click-to-source · bbox overlay --- */
+  :root { --guide: #5b3ea6; --guide-bg: #efeaf9; --guide-line: #cabfe9; }
+  .docsec { max-width: 1200px; margin: 0 auto 26px; padding: 0 20px;
+            display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 860px) { .docsec { grid-template-columns: 1fr; } }
+  .uploadrow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .uploadrow input[type=file] { font: inherit; font-size: 12.5px; max-width: 100%; }
+  .uploadrow select { min-width: 150px; }
+  .hint { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+  .hint.err { color: var(--refuse-ink); }
+
+  /* confidence indicator */
+  .conf { margin: 12px 0 2px; }
+  .conf .track { height: 8px; border-radius: 6px; background: #e4e9ee; overflow: hidden; }
+  .conf .fill { height: 100%; border-radius: 6px; transition: width .3s; }
+  .conf .lbl { font-size: 12px; color: var(--muted); margin-top: 5px; }
+  .conf .lbl b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  /* extracted values — each row is a clickable citation */
+  .exhead { font-weight: 800; text-transform: uppercase; letter-spacing: .4px; font-size: 12px;
+            color: var(--accent-ink); margin: 14px 0 6px; }
+  ul.exvals { list-style: none; margin: 0; padding: 0; }
+  ul.exvals li { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px;
+                 cursor: pointer; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  ul.exvals li:hover { background: var(--chip-bg); border-color: var(--accent); }
+  ul.exvals .nm { font-weight: 650; }
+  ul.exvals .vv { font-variant-numeric: tabular-nums; }
+  ul.exvals .rr { color: var(--muted); font-size: 12px; }
+  .flagpill { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px;
+              padding: 1px 7px; border-radius: 20px; }
+  .flag-high, .flag-critical { background: var(--flag-bg); color: var(--flag-ink); border: 1px solid var(--flag-line); }
+  .flag-low { background: #eef3fb; color: #274b7a; border: 1px solid #a9c3e6; }
+  .flag-normal { background: #eaf6ee; color: #1f6b3a; border: 1px solid #b3ddc0; }
+  .flag-unknown { background: #eef1f4; color: var(--muted); border: 1px solid var(--line); }
+  .srcpin { margin-left: auto; font-size: 11px; color: var(--accent-ink); font-weight: 700; white-space: nowrap; }
+  .srcpin::before { content: "◆ "; }
+
+  /* W2 answer — record facts vs guideline evidence, kept visually distinct */
+  .w2headline { font-size: 15px; font-weight: 650; line-height: 1.5; margin: 6px 0 4px; }
+  .section-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .6px; margin: 16px 0 6px;
+                   display: flex; align-items: center; gap: 8px; }
+  .section-label::before { content: ""; width: 10px; height: 10px; border-radius: 3px; }
+  .section-label.record { color: var(--accent-ink); }
+  .section-label.record::before { background: var(--accent); }
+  .section-label.guide  { color: var(--guide); }
+  .section-label.guide::before { background: var(--guide); }
+  ul.cites { list-style: none; margin: 0; padding: 0; }
+  ul.cites li { padding: 8px 10px; border-radius: 8px; margin-bottom: 6px; cursor: pointer; font-size: 13px; }
+  ul.cites.record li { background: var(--chip-bg); border: 1px solid #bcdadd; }
+  ul.cites.record li:hover { border-color: var(--accent); }
+  ul.cites.guide li { background: var(--guide-bg); border: 1px solid var(--guide-line); }
+  ul.cites.guide li:hover { border-color: var(--guide); }
+  .cites .q { color: #33404d; }
+  .cites .attr { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .clm { padding: 9px 0; border-top: 1px solid var(--line); }
+  .clm:first-child { border-top: 0; }
+  .chip.click { cursor: pointer; }
+  .chip.click:hover { background: var(--accent); color: #fff; }
+  .chip.guide { background: var(--guide-bg); color: var(--guide); }
+  .chip.guide.click:hover { background: var(--guide); color: #fff; }
+  .empty { color: var(--muted); font-size: 12.5px; margin: 6px 0; }
+
+  /* source preview pane + bbox overlay */
+  .pagewrap { border: 1px solid var(--line); border-radius: 8px; background: #f6f8fa; padding: 8px;
+              overflow: auto; max-height: 74vh; }
+  .pageframe { position: relative; display: inline-block; line-height: 0; }
+  .pageframe img { display: block; max-width: 100%; height: auto; }
+  .hlbox { position: absolute; background: rgba(255,214,10,.34); border: 2px solid #e65a14; border-radius: 2px;
+           box-shadow: 0 0 0 2px rgba(230,90,20,.22); pointer-events: none; }
+  .hlbox.page { inset: 0; background: rgba(255,214,10,.12); }
+  .pvcap { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .pvcap b { color: var(--ink); }
+  .snippet { background: var(--guide-bg); border: 1px solid var(--guide-line); border-radius: 10px; padding: 14px 16px; }
+  .snippet .txt { font-size: 14px; line-height: 1.55; color: #2c2540; }
+  .snippet .attr { margin-top: 10px; font-size: 12px; color: var(--guide); font-weight: 700; }
+  .preview-empty { color: var(--muted); font-size: 13px; padding: 26px 10px; text-align: center; }
 </style>
 </head>
 <body>
@@ -178,6 +255,49 @@
     </div>
   </div>
 </main>
+
+<!-- PRP-13: multimodal document flow — upload, extract, click-to-source (FR-7). -->
+<section class="docsec" id="docSection">
+  <div class="col">
+    <div class="card">
+      <div class="banner">Documents — extract, verify, cite</div>
+      <div class="body">
+        <div class="uploadrow">
+          <input type="file" id="docFile" accept=".pdf,.png,.jpg,.jpeg" onchange="onDocPicked()" />
+          <select id="docType" aria-label="Document type">
+            <option value="lab_pdf">Lab PDF</option>
+            <option value="intake_form">Intake form</option>
+          </select>
+          <button id="extractBtn" onclick="extractDoc()">Extract</button>
+        </div>
+        <div class="hint" id="docHint">Choose a patient above, then upload a lab PDF or intake form to extract its values.</div>
+        <div id="confWrap"></div>
+        <div id="extracted"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="banner">Ask with sources — record facts vs guidelines</div>
+      <div class="body">
+        <div class="ask-row">
+          <input id="w2q" type="text" placeholder="e.g. Is this glucose result concerning per guidelines?"
+                 onkeydown="if(event.key==='Enter') w2ask()" />
+          <button id="w2btn" onclick="w2ask()">Ask</button>
+        </div>
+        <div id="w2answer"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card" id="previewCard">
+      <div class="banner">Source preview</div>
+      <div class="body">
+        <div id="previewPane"><div class="preview-empty">Click any citation to view its exact source here.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
 
 <script>
 // Tunables (adjust freely).
@@ -415,6 +535,285 @@ async function ask() {
   } finally {
     $("askbtn").disabled = false; ai.scrollIntoView({ block: "nearest" });
   }
+}
+
+// ===========================================================================
+// PRP-13 — documents, extraction, and click-to-source with a bbox overlay.
+// The uploaded File stays only in memory (never persisted / localStorage) so
+// the preview endpoint can re-render the exact page a citation points at.
+// ===========================================================================
+let uploadedDoc = null; // { name, file } — the last extracted document, in memory only.
+
+function onDocPicked() {
+  const f = $("docFile").files[0];
+  $("docHint").className = "hint";
+  $("docHint").textContent = f
+    ? `Ready to extract “${f.name}”. Pick the type and press Extract.`
+    : "Choose a patient above, then upload a lab PDF or intake form to extract its values.";
+}
+
+function confIndicator(conf) {
+  const pct = Math.round((conf || 0) * 100);
+  const color = conf >= 0.8 ? "#1f8a4c" : conf >= 0.5 ? "#c07a12" : "#b3261e";
+  const wrap = $("confWrap"); wrap.innerHTML = "";
+  const box = document.createElement("div"); box.className = "conf";
+  box.innerHTML =
+    `<div class="track"><div class="fill" style="width:${pct}%;background:${color}"></div></div>` +
+    `<div class="lbl">Extraction confidence <b>${pct}%</b> — VLM self-report, clamped by how many values were box-grounded.</div>`;
+  wrap.appendChild(box);
+}
+
+// bbox lives in the citation's field_or_chunk_id as "bbox=x0,top,x1,bottom" (PDF
+// points); page_or_section is "page N". Both are parsed defensively — a missing
+// bbox is the graceful-degradation signal (image-only scan / unlocated quote).
+function parseBbox(fieldOrChunk) {
+  const m = /bbox=([\d.]+),([\d.]+),([\d.]+),([\d.]+)/.exec(fieldOrChunk || "");
+  if (!m) return null;
+  return { x0: +m[1], top: +m[2], x1: +m[3], bottom: +m[4] };
+}
+function parsePage(pageOrSection) {
+  const m = /page\s+(\d+)/i.exec(pageOrSection || "");
+  return m ? parseInt(m[1], 10) : 1;
+}
+// There is exactly one uploaded document held in memory, and PRP-06's ingestion
+// rewrites a citation's source_id to the server-side temp basename (e.g.
+// "tmp2bd959h1.pdf"), which never equals the browser filename. So a
+// document-source citation always refers to the one doc we hold — resolve it
+// directly rather than gating on a filename equality that can never hold.
+function fileForSource() {
+  return uploadedDoc ? uploadedDoc.file : null;
+}
+
+async function extractDoc() {
+  const pid = $("patient").value;
+  const f = $("docFile").files[0];
+  const hint = $("docHint");
+  if (!pid) { hint.className = "hint err"; hint.textContent = "Select a patient above first."; return; }
+  if (!f) { hint.className = "hint err"; hint.textContent = "Choose a file to upload."; return; }
+  $("extractBtn").disabled = true;
+  hint.className = "hint"; hint.innerHTML = '<span class="thinking">Extracting — reading the document with the vision model…</span>';
+  $("confWrap").innerHTML = ""; $("extracted").innerHTML = "";
+  try {
+    const fd = new FormData();
+    fd.append("file", f);
+    fd.append("doc_type", $("docType").value);
+    const resp = await fetch(`/patients/${encodeURIComponent(pid)}/documents`, { method: "POST", body: fd });
+    if (!resp.ok) {
+      const detail = await resp.json().catch(() => ({}));
+      throw new Error(detail.detail || `HTTP ${resp.status}`);
+    }
+    const result = await resp.json();
+    uploadedDoc = { name: f.name, file: f }; // keep the bytes in memory for previews
+    hint.className = "hint";
+    hint.textContent = `Extracted ${uploadedDoc.name}. Click any value below to highlight its source.`;
+    confIndicator(result.confidence);
+    renderExtracted(result.extracted);
+  } catch (e) {
+    hint.className = "hint err"; hint.textContent = "Extraction failed: " + e.message;
+  } finally {
+    $("extractBtn").disabled = false;
+  }
+}
+
+function citeLi(label, valueHtml, flag, citation) {
+  const li = document.createElement("li");
+  const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = label; li.appendChild(nm);
+  if (valueHtml) { const v = document.createElement("span"); v.className = "vv"; v.innerHTML = valueHtml; li.appendChild(v); }
+  if (flag) {
+    const p = document.createElement("span"); p.className = "flagpill flag-" + flag; p.textContent = flag; li.appendChild(p);
+  }
+  const pin = document.createElement("span"); pin.className = "srcpin"; pin.textContent = "view source"; li.appendChild(pin);
+  li.onclick = () => openCitation(citation);
+  return li;
+}
+
+function renderExtracted(ex) {
+  const host = $("extracted"); host.innerHTML = "";
+  if (!ex) return;
+  if (Array.isArray(ex.observations)) {
+    const h = document.createElement("div"); h.className = "exhead";
+    h.textContent = "Lab observations" + (ex.report_date ? " · " + ex.report_date : "");
+    host.appendChild(h);
+    const ul = document.createElement("ul"); ul.className = "exvals";
+    ex.observations.forEach((o) => {
+      const val = [o.value, o.unit].filter(Boolean).join(" ");
+      const rr = o.reference_range ? ` <span class="rr">(ref ${o.reference_range})</span>` : "";
+      ul.appendChild(citeLi(o.test_name, val + rr, o.abnormal_flag, o.citation));
+    });
+    host.appendChild(ul);
+  } else if (ex.demographics) {
+    const h = document.createElement("div"); h.className = "exhead"; h.textContent = "Intake facts"; host.appendChild(h);
+    const ul = document.createElement("ul"); ul.className = "exvals";
+    const d = ex.demographics;
+    const demo = [d.name, d.dob, d.sex].filter(Boolean).join(" · ") || "—";
+    ul.appendChild(citeLi("Demographics", demo, null, d.citation));
+    if (ex.chief_concern) ul.appendChild(citeLi("Chief concern", ex.chief_concern.text, null, ex.chief_concern.citation));
+    [["Current medications", ex.current_medications], ["Allergies", ex.allergies], ["Family history", ex.family_history]]
+      .forEach(([label, cl]) => {
+        if (!cl) return;
+        const items = (cl.items && cl.items.length) ? cl.items.join(", ") : "none reported";
+        ul.appendChild(citeLi(label, items, null, cl.citation));
+      });
+    host.appendChild(ul);
+  }
+}
+
+function setPreview(node) { const p = $("previewPane"); p.innerHTML = ""; p.appendChild(node); }
+function previewMsg(text) { const d = document.createElement("div"); d.className = "preview-empty"; d.textContent = text; setPreview(d); }
+
+// Central click-to-source handler. Guideline sources reveal their snippet;
+// document sources render the page image with the exact word-box overlaid
+// (or a page-level highlight when there is no box — the degradation path).
+async function openCitation(cit) {
+  if (!cit) return;
+  if (cit.source_type === "guideline") { showSnippet(cit); return; }
+  const file = fileForSource();
+  if (!file) {
+    const d = document.createElement("div"); d.className = "snippet";
+    d.innerHTML = `<div class="txt">${escapeHtml(cit.quote_or_value)}</div>` +
+      `<div class="attr">${escapeHtml(cit.source_id)}${cit.page_or_section ? " · " + escapeHtml(cit.page_or_section) : ""} — upload a document to view its page.</div>`;
+    setPreview(d); return;
+  }
+  previewMsg("Rendering source page…");
+  try {
+    const fd = new FormData(); fd.append("file", file); fd.append("page", String(parsePage(cit.page_or_section)));
+    const resp = await fetch("/preview/page", { method: "POST", body: fd });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const pv = await resp.json();
+    renderPage(pv, parseBbox(cit.field_or_chunk_id), cit);
+  } catch (e) {
+    previewMsg("Could not render source: " + e.message);
+  }
+}
+
+function renderPage(pv, bbox, cit) {
+  const pane = $("previewPane"); pane.innerHTML = "";
+  const cap = document.createElement("div"); cap.className = "pvcap";
+  const grounded = bbox && pv.width_pt;
+  const docName = (uploadedDoc && uploadedDoc.name) || cit.source_id;
+  cap.innerHTML = `<b>${escapeHtml(docName)}</b> · ${escapeHtml(cit.page_or_section || "page 1")}` +
+    (grounded ? ` · highlighting “${escapeHtml(cit.quote_or_value)}”` : " · page-level highlight (no text box available)");
+  pane.appendChild(cap);
+
+  const wrap = document.createElement("div"); wrap.className = "pagewrap";
+  const frame = document.createElement("div"); frame.className = "pageframe";
+  const img = new Image(); img.src = pv.image_data_uri; img.alt = "Document page " + pv.page;
+  frame.appendChild(img);
+
+  const box = document.createElement("div");
+  if (grounded) {
+    box.className = "hlbox";
+    // identical fraction-of-page math to the preview PNG proof: point coords /
+    // page point size = fraction of the rendered image, resolution-independent.
+    box.style.left = (bbox.x0 / pv.width_pt * 100) + "%";
+    box.style.top = (bbox.top / pv.height_pt * 100) + "%";
+    box.style.width = ((bbox.x1 - bbox.x0) / pv.width_pt * 100) + "%";
+    box.style.height = ((bbox.bottom - bbox.top) / pv.height_pt * 100) + "%";
+  } else {
+    box.className = "hlbox page"; // graceful degradation: whole-page tint
+  }
+  frame.appendChild(box);
+  wrap.appendChild(frame); pane.appendChild(wrap);
+  pane.scrollIntoView({ block: "nearest" });
+}
+
+function showSnippet(cit) {
+  const d = document.createElement("div"); d.className = "snippet";
+  const attr = [cit.source_id, cit.page_or_section].filter(Boolean).join(" · ");
+  d.innerHTML = `<div class="txt">${escapeHtml(cit.quote_or_value)}</div>` +
+    `<div class="attr">Guideline evidence — ${escapeHtml(attr)}</div>`;
+  setPreview(d);
+}
+
+function escapeHtml(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// --- W2 grounded answer: record facts and guideline evidence kept separate ---
+async function w2ask() {
+  const pid = $("patient").value;
+  const q = $("w2q").value.trim();
+  const host = $("w2answer");
+  if (!pid) { host.innerHTML = '<div class="hint err">Select a patient above first.</div>'; return; }
+  if (!q) return;
+  $("w2btn").disabled = true;
+  host.innerHTML = '<div class="thinking">Answering — routing the graph and grounding every claim…</div>';
+  try {
+    const resp = await fetch(`/patients/${encodeURIComponent(pid)}/ask`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    renderW2(await resp.json());
+  } catch (e) {
+    host.innerHTML = '<div class="hint err">Ask failed: ' + escapeHtml(e.message) + "</div>";
+  } finally {
+    $("w2btn").disabled = false;
+  }
+}
+
+// Build a quick index so a claim's SourceRef (resource_type,id) can jump to a
+// full citation (with its bbox / snippet) in the two evidence lists.
+function citeIndex(ans) {
+  const idx = new Map();
+  const add = (c) => { const k = c.source_type + "|" + c.source_id; if (!idx.has(k)) idx.set(k, c); };
+  (ans.record_facts || []).forEach(add);
+  (ans.guideline_evidence || []).forEach(add);
+  return idx;
+}
+
+function renderW2(ans) {
+  const host = $("w2answer"); host.innerHTML = "";
+  const idx = citeIndex(ans);
+
+  if (ans.headline) { const h = document.createElement("div"); h.className = "w2headline"; h.textContent = ans.headline; host.appendChild(h); }
+
+  (ans.answer_claims || []).forEach((c) => {
+    const d = document.createElement("div"); d.className = "clm";
+    const t = document.createElement("div"); t.textContent = c.text; d.appendChild(t);
+    if (c.sources && c.sources.length) {
+      const row = document.createElement("div"); row.className = "chips";
+      c.sources.forEach((s) => {
+        const chip = document.createElement("span");
+        const isGuide = s.resource_type === "guideline";
+        chip.className = "chip click" + (isGuide ? " guide" : "");
+        chip.textContent = isGuide ? "guideline" : s.resource_type;
+        chip.title = s.id;
+        const cit = idx.get(s.resource_type + "|" + s.id);
+        if (cit) chip.onclick = () => openCitation(cit);
+        row.appendChild(chip);
+      });
+      d.appendChild(row);
+    }
+    host.appendChild(d);
+  });
+  if (!(ans.answer_claims || []).length) {
+    const e = document.createElement("div"); e.className = "empty"; e.textContent = "No grounded claims for this question."; host.appendChild(e);
+  }
+
+  host.appendChild(citeSection("record", "Record facts (this patient's chart)", ans.record_facts || []));
+  host.appendChild(citeSection("guide", "Guideline evidence (public guidance)", ans.guideline_evidence || []));
+
+  (ans.caveats || []).forEach((c) => { const d = document.createElement("div"); d.className = "empty"; d.textContent = "⚠ " + c; host.appendChild(d); });
+}
+
+function citeSection(kind, label, cites) {
+  const frag = document.createDocumentFragment();
+  const lbl = document.createElement("div"); lbl.className = "section-label " + kind; lbl.textContent = label; frag.appendChild(lbl);
+  if (!cites.length) { const e = document.createElement("div"); e.className = "empty"; e.textContent = "None for this answer."; frag.appendChild(e); return frag; }
+  const ul = document.createElement("ul"); ul.className = "cites " + kind;
+  cites.forEach((c) => {
+    const li = document.createElement("li");
+    const q = document.createElement("span"); q.className = "q"; q.textContent = c.quote_or_value; li.appendChild(q);
+    const attr = document.createElement("span"); attr.className = "attr";
+    attr.textContent = [c.source_id, c.page_or_section].filter(Boolean).join(" · ") +
+      (kind === "record" && parseBbox(c.field_or_chunk_id) ? " · click to highlight on page" : "");
+    li.appendChild(attr);
+    li.onclick = () => openCitation(c);
+    ul.appendChild(li);
+  });
+  frag.appendChild(ul);
+  return frag;
 }
 
 // On a SMART launch, OpenEMR sends the clinician here as /?patient=<id>
