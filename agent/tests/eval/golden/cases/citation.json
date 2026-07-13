@@ -1,0 +1,166 @@
+[
+  {
+    "id": "citation-hypertension-01",
+    "kind": "citation",
+    "input": {
+      "query": "Is this blood pressure in the hypertensive range?",
+      "topic": "hypertension"
+    },
+    "expected_behavior": "The stub model emits a fabricated uncited-from-evidence claim; the verification gate drops it so every surfaced claim still carries a resolvable citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "citation-hypertension-02",
+    "kind": "citation",
+    "input": {
+      "query": "Does the guideline support starting two agents at once?",
+      "topic": "hypertension"
+    },
+    "expected_behavior": "The stub model emits a fabricated uncited-from-evidence claim; the verification gate drops it so every surfaced claim still carries a resolvable citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "citation-diabetes-03",
+    "kind": "citation",
+    "input": {
+      "query": "Is the A1c above the recommended target?",
+      "topic": "diabetes"
+    },
+    "expected_behavior": "The stub model emits a fabricated uncited-from-evidence claim; the verification gate drops it so every surfaced claim still carries a resolvable citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "citation-diabetes-04",
+    "kind": "citation",
+    "input": {
+      "query": "Should a statin be added given the diabetes diagnosis?",
+      "topic": "diabetes"
+    },
+    "expected_behavior": "The stub model emits a fabricated uncited-from-evidence claim; the verification gate drops it so every surfaced claim still carries a resolvable citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "citation-lipids-05",
+    "kind": "citation",
+    "input": {
+      "query": "Does the LDL level meet the statin threshold?",
+      "topic": "lipids"
+    },
+    "expected_behavior": "The stub model emits a fabricated uncited-from-evidence claim; the verification gate drops it so every surfaced claim still carries a resolvable citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "citation-lipids-06",
+    "kind": "citation",
+    "input": {
+      "query": "Is the cardiovascular risk high enough for a statin?",
+      "topic": "lipids"
+    },
+    "expected_behavior": "The stub model emits a fabricated uncited-from-evidence claim; the verification gate drops it so every surfaced claim still carries a resolvable citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "citation-diabetes-07",
+    "kind": "citation",
+    "input": {
+      "query": "Given the A1c result, is glycemic control at goal?",
+      "topic": "diabetes",
+      "doc": "lab_hba1c_cbc.pdf"
+    },
+    "expected_behavior": "The stub model emits a fabricated uncited-from-evidence claim; the verification gate drops it so every surfaced claim still carries a resolvable citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "citation-lipids-08",
+    "kind": "citation",
+    "input": {
+      "query": "Given the lipid panel, is a statin indicated?",
+      "topic": "lipids",
+      "doc": "lab_cmp_lipid.pdf"
+    },
+    "expected_behavior": "The stub model emits a fabricated uncited-from-evidence claim; the verification gate drops it so every surfaced claim still carries a resolvable citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "citation-hypertension-09",
+    "kind": "citation",
+    "input": {
+      "query": "Given the intake blood pressure, what stage is this?",
+      "topic": "hypertension",
+      "doc": "intake_form.pdf"
+    },
+    "expected_behavior": "The stub model emits a fabricated uncited-from-evidence claim; the verification gate drops it so every surfaced claim still carries a resolvable citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "citation-diabetes-10",
+    "kind": "citation",
+    "input": {
+      "query": "Do the labs and guideline agree on control?",
+      "topic": "diabetes",
+      "doc": "lab_hba1c_cbc.pdf"
+    },
+    "expected_behavior": "The stub model emits a fabricated uncited-from-evidence claim; the verification gate drops it so every surfaced claim still carries a resolvable citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  }
+]

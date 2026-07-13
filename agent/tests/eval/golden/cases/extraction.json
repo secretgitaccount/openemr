@@ -1,0 +1,243 @@
+[
+  {
+    "id": "extraction-cmp-01-glucose",
+    "kind": "extraction",
+    "input": {
+      "doc": "lab_cmp_lipid.pdf",
+      "focus": "Glucose"
+    },
+    "expected_behavior": "Extract the CMP/lipid panel; high glucose (168 mg/dL) is grounded to a page citation, surfaced only with a citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "extraction-cmp-02-ldl-cholesterol",
+    "kind": "extraction",
+    "input": {
+      "doc": "lab_cmp_lipid.pdf",
+      "focus": "LDL Cholesterol"
+    },
+    "expected_behavior": "Extract the CMP/lipid panel; elevated LDL is extracted with its citation, surfaced only with a citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "extraction-cmp-03-hdl-cholesterol",
+    "kind": "extraction",
+    "input": {
+      "doc": "lab_cmp_lipid.pdf",
+      "focus": "HDL Cholesterol"
+    },
+    "expected_behavior": "Extract the CMP/lipid panel; low HDL is extracted with its citation, surfaced only with a citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "extraction-cmp-04-triglycerides",
+    "kind": "extraction",
+    "input": {
+      "doc": "lab_cmp_lipid.pdf",
+      "focus": "Triglycerides"
+    },
+    "expected_behavior": "Extract the CMP/lipid panel; high triglycerides are extracted with a citation, surfaced only with a citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "extraction-cmp-05-total-cholesterol",
+    "kind": "extraction",
+    "input": {
+      "doc": "lab_cmp_lipid.pdf",
+      "focus": "Total Cholesterol"
+    },
+    "expected_behavior": "Extract the CMP/lipid panel; high total cholesterol is extracted with a citation, surfaced only with a citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "extraction-cmp-06-creatinine",
+    "kind": "extraction",
+    "input": {
+      "doc": "lab_cmp_lipid.pdf",
+      "focus": "Creatinine"
+    },
+    "expected_behavior": "Extract the CMP/lipid panel; normal creatinine is extracted with a citation, surfaced only with a citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "extraction-hba1c-01-hemoglobin-a1c",
+    "kind": "extraction",
+    "input": {
+      "doc": "lab_hba1c_cbc.pdf",
+      "focus": "Hemoglobin A1c"
+    },
+    "expected_behavior": "Extract the HbA1c/CBC panel; the high A1c (8.2%) is extracted with a citation, surfaced only with a citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "extraction-hba1c-02-estimated-average-glucose",
+    "kind": "extraction",
+    "input": {
+      "doc": "lab_hba1c_cbc.pdf",
+      "focus": "Estimated Average Glucose"
+    },
+    "expected_behavior": "Extract the HbA1c/CBC panel; the derived eAG is extracted with a citation, surfaced only with a citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "extraction-hba1c-03-wbc",
+    "kind": "extraction",
+    "input": {
+      "doc": "lab_hba1c_cbc.pdf",
+      "focus": "WBC"
+    },
+    "expected_behavior": "Extract the HbA1c/CBC panel; the normal CBC white count is extracted with a citation, surfaced only with a citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "extraction-intake-01-medications",
+    "kind": "extraction",
+    "input": {
+      "doc": "intake_form.pdf",
+      "focus": "medications"
+    },
+    "expected_behavior": "Extract the intake form; the reported medication list is extracted with a citation, surfaced only with a citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "extraction-intake-02-allergies",
+    "kind": "extraction",
+    "input": {
+      "doc": "intake_form.pdf",
+      "focus": "allergies"
+    },
+    "expected_behavior": "Extract the intake form; the penicillin allergy is extracted with a citation, surfaced only with a citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "extraction-intake-03-chief-concern",
+    "kind": "extraction",
+    "input": {
+      "doc": "intake_form.pdf",
+      "focus": "chief_concern"
+    },
+    "expected_behavior": "Extract the intake form; the chief concern is extracted with a citation, surfaced only with a citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "extraction-intake-04-family-history",
+    "kind": "extraction",
+    "input": {
+      "doc": "intake_form.pdf",
+      "focus": "family_history"
+    },
+    "expected_behavior": "Extract the intake form; the family history is extracted with a citation, surfaced only with a citation.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "extraction-scanned-01-graceful-degradation",
+    "kind": "extraction",
+    "input": {
+      "doc": "lab_scanned.png",
+      "focus": "image-only scan"
+    },
+    "expected_behavior": "Extract an image-only scan; citations degrade to page-level but every value is still grounded and cited.",
+    "expected": {
+      "schema_valid": true,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  },
+  {
+    "id": "extraction-malformed-01-schema-rejects",
+    "kind": "extraction",
+    "input": {
+      "doc": "lab_cmp_lipid.pdf",
+      "focus": "out-of-range confidence",
+      "malformed": true
+    },
+    "expected_behavior": "Raw extraction reports an out-of-range confidence; the Pydantic schema rejects it, so nothing invalid is surfaced.",
+    "expected": {
+      "schema_valid": false,
+      "citation_present": true,
+      "factually_consistent": true,
+      "safe_refusal": false,
+      "no_phi_in_logs": true
+    }
+  }
+]
