@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+#
+# PR-blocking pre-push gate (PRP-12, FR-8) — the graded hard gate.
+#
+# Runs, in order and stopping at the first failure:
+#   1. ruff check                          (lint)
+#   2. pytest -q                           (full test suite)
+#   3. python -m copilot.evals.gate        (golden-set regression vs baseline)
+#   4. python -m copilot.scripts.phi_check (fail-closed PHI scan)
+#
+# ANY nonzero step blocks the push (exit 1) and names the step that failed.
+#
+# Install once (documented in agent/README.md and the Makefile):
+#   git config core.hooksPath .githooks
+#
+set -uo pipefail
+
+# Resolve the agent dir relative to the repo root, regardless of CWD at push.
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+AGENT_DIR="${REPO_ROOT}/agent"
+cd "${AGENT_DIR}" || { echo "pre-push: cannot cd to ${AGENT_DIR}"; exit 1; }
+
+# Prefer the project venv so the gate runs with pinned deps on a fresh checkout.
+if [ -x ".venv/bin/python" ]; then
+    PY=".venv/bin/python"
+    RUFF=".venv/bin/ruff"
+else
+    PY="python"
+    RUFF="ruff"
+fi
+# Fall back to `python -m ruff` if the ruff console script is missing.
+if [ ! -x "${RUFF}" ] && ! command -v "${RUFF}" >/dev/null 2>&1; then
+    RUFF="${PY} -m ruff"
+fi
+
+run_step() {
+    local name="$1"; shift
+    echo "==> pre-push: ${name}"
+    if ! "$@"; then
+        echo ""
+        echo "pre-push: BLOCKED — step failed: ${name}"
+        echo "push aborted; fix the failure above and push again."
+        exit 1
+    fi
+}
+
+# shellcheck disable=SC2086  # RUFF may be "python -m ruff"
+run_step "ruff check"                    ${RUFF} check
+run_step "pytest -q"                     "${PY}" -m pytest -q
+run_step "eval regression gate"          "${PY}" -m copilot.evals.gate
+run_step "PHI check (fail-closed)"       "${PY}" -m copilot.scripts.phi_check
+
+echo ""
+echo "pre-push: all gates green — push allowed."
+exit 0

@@ -25,11 +25,12 @@ tenacity>=9.0          # retries with backoff, circuit-breaker helpers
 # --- config ---
 python-dotenv>=1.0
 
-# --- test / eval ---
+# --- test / eval / lint (dev; needed by the PR-blocking gate on fresh installs) ---
 pytest>=8.3
 pytest-asyncio>=0.24
 pytest-httpx>=0.32     # mock OpenEMR in unit tests
 respx>=0.21
+ruff==0.15.21          # lint step of .githooks/pre-push + `make ci` (pinned for reproducible gate)
 
 # --- load testing (M3) ---
 locust>=2.32

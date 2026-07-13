@@ -26,9 +26,9 @@ def _lab(name: str, day: int, *, abnormal: bool | None = None) -> LabResult:
 def test_keeps_latest_per_test_and_drops_older_normals() -> None:
     labs = [_lab("Glucose", d) for d in range(1, 8)] + [_lab("Sodium", 1)]  # 7 glucose, 1 sodium
     kept = _bound_labs(labs, per_test=3)
-    names = [l.name for l in kept]
+    names = [lab.name for lab in kept]
     assert names.count("Glucose") == 3
-    assert sorted(l.effective.day for l in kept if l.name == "Glucose") == [5, 6, 7]  # newest 3
+    assert sorted(lab.effective.day for lab in kept if lab.name == "Glucose") == [5, 6, 7]  # newest 3
     assert names.count("Sodium") == 1
     assert len(kept) == 4
 
@@ -37,7 +37,7 @@ def test_abnormal_is_never_dropped_however_old() -> None:
     # 3 recent normal glucose + 1 abnormal glucose from long ago (day 1).
     labs = [_lab("Glucose", d) for d in range(5, 8)] + [_lab("Glucose", 1, abnormal=True)]
     kept = _bound_labs(labs, per_test=3)
-    days = {l.effective.day for l in kept}
+    days = {lab.effective.day for lab in kept}
     assert 1 in days, "the old abnormal glucose must be retained"
     assert {5, 6, 7} <= days
-    assert len({l.id for l in kept}) == len(kept)  # no duplicates
+    assert len({lab.id for lab in kept}) == len(kept)  # no duplicates
