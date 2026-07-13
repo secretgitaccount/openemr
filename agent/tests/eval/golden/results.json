@@ -1,0 +1,1370 @@
+{
+  "cases": [
+    {
+      "dropped_claims": 1,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "citation-diabetes-03",
+      "kind": "citation",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 1,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "citation-diabetes-04",
+      "kind": "citation",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 1,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "citation-diabetes-07",
+      "kind": "citation",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 1,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "citation-diabetes-10",
+      "kind": "citation",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 1,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "citation-hypertension-01",
+      "kind": "citation",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 1,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "citation-hypertension-02",
+      "kind": "citation",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 1,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "citation-hypertension-09",
+      "kind": "citation",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 1,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "citation-lipids-05",
+      "kind": "citation",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 1,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "citation-lipids-06",
+      "kind": "citation",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 1,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "citation-lipids-08",
+      "kind": "citation",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "evidence-diabetes-05",
+      "kind": "evidence",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "evidence-diabetes-06",
+      "kind": "evidence",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "evidence-diabetes-07",
+      "kind": "evidence",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "evidence-hypertension-01",
+      "kind": "evidence",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "evidence-hypertension-02",
+      "kind": "evidence",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "evidence-hypertension-03",
+      "kind": "evidence",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "evidence-hypertension-04",
+      "kind": "evidence",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "evidence-lipids-08",
+      "kind": "evidence",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "evidence-lipids-09",
+      "kind": "evidence",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "evidence-lipids-10",
+      "kind": "evidence",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "extraction-cmp-01-glucose",
+      "kind": "extraction",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "extraction-cmp-02-ldl-cholesterol",
+      "kind": "extraction",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "extraction-cmp-03-hdl-cholesterol",
+      "kind": "extraction",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "extraction-cmp-04-triglycerides",
+      "kind": "extraction",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "extraction-cmp-05-total-cholesterol",
+      "kind": "extraction",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "extraction-cmp-06-creatinine",
+      "kind": "extraction",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "extraction-hba1c-01-hemoglobin-a1c",
+      "kind": "extraction",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "extraction-hba1c-02-estimated-average-glucose",
+      "kind": "extraction",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "extraction-hba1c-03-wbc",
+      "kind": "extraction",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "extraction-intake-01-medications",
+      "kind": "extraction",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "extraction-intake-02-allergies",
+      "kind": "extraction",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "extraction-intake-03-chief-concern",
+      "kind": "extraction",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "extraction-intake-04-family-history",
+      "kind": "extraction",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": false
+      },
+      "id": "extraction-malformed-01-schema-rejects",
+      "kind": "extraction",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": false
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "extraction-scanned-01-graceful-degradation",
+      "kind": "extraction",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "missing-data-01",
+      "kind": "missing_data",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "missing-data-02",
+      "kind": "missing_data",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "missing-data-03",
+      "kind": "missing_data",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "missing-data-04",
+      "kind": "missing_data",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "missing-data-05",
+      "kind": "missing_data",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "missing-data-06",
+      "kind": "missing_data",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "id": "missing-data-07",
+      "kind": "missing_data",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": false,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "id": "refusal-non_clinical-03",
+      "kind": "refusal",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "id": "refusal-non_clinical-04",
+      "kind": "refusal",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "id": "refusal-non_clinical-08",
+      "kind": "refusal",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "id": "refusal-out_of_panel-01",
+      "kind": "refusal",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "id": "refusal-out_of_panel-02",
+      "kind": "refusal",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "id": "refusal-out_of_panel-07",
+      "kind": "refusal",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "id": "refusal-unsafe_request-05",
+      "kind": "refusal",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    },
+    {
+      "dropped_claims": 0,
+      "expected": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "id": "refusal-unsafe_request-06",
+      "kind": "refusal",
+      "measured": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed": {
+        "citation_present": true,
+        "factually_consistent": true,
+        "no_phi_in_logs": true,
+        "safe_refusal": true,
+        "schema_valid": true
+      },
+      "passed_all": true
+    }
+  ],
+  "counts_by_kind": {
+    "citation": 10,
+    "evidence": 10,
+    "extraction": 15,
+    "missing_data": 7,
+    "refusal": 8
+  },
+  "overall_pass_rate": 1.0,
+  "per_category_pass_rate": {
+    "citation_present": 1.0,
+    "factually_consistent": 1.0,
+    "no_phi_in_logs": 1.0,
+    "safe_refusal": 1.0,
+    "schema_valid": 1.0
+  },
+  "total": 50
+}
