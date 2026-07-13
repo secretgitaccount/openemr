@@ -32,3 +32,12 @@ respx>=0.21
 
 # --- load testing (M3) ---
 locust>=2.32
+
+# --- Week 2: documents + hybrid RAG + LangGraph orchestration ---
+langgraph>=0.2                 # supervisor + worker graph
+faiss-cpu>=1.8                 # dense vector index (CPU wheels)
+rank-bm25>=0.2                 # lexical BM25 retrieval
+sentence-transformers>=3.0     # embeddings — pulls torch (CPU wheels)
+pdfplumber>=0.11               # PDF text/word-box extraction
+pypdf>=5.0                     # PDF page handling
+reportlab>=4.2                 # dev/test PDF asset generation
