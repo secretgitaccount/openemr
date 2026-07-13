@@ -4,6 +4,7 @@
 # --- web / app ---
 fastapi>=0.115
 uvicorn[standard]>=0.32
+python-multipart>=0.0.9   # multipart form uploads (Week 2 document ingestion)
 pydantic>=2.9
 pydantic-settings>=2.6
 
