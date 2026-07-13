@@ -19,7 +19,16 @@ from copilot import health
 from copilot.health import DependencyStatus
 from copilot.main import app
 
-DEPENDENCY_KEYS = {"openemr", "anthropic", "langfuse", "audit_globals"}
+DEPENDENCY_KEYS = {
+    "openemr",
+    "anthropic",
+    "langfuse",
+    "audit_globals",
+    # Week-2 dependencies (PRP-14)
+    "document_storage",
+    "vector_index",
+    "reranker",
+}
 
 
 @pytest.fixture
@@ -63,7 +72,9 @@ def test_ready_has_a_key_per_dependency(client: TestClient) -> None:
     for name, check in body["checks"].items():
         assert "status" in check, name
         assert isinstance(check["required"], bool)
-    assert body["status"] in {"ready", "not_ready"}
+    # Status is three-valued (not a binary up/down) and carries the degraded list.
+    assert body["status"] in {"ready", "degraded", "not_ready"}
+    assert isinstance(body["degraded"], list)
 
 
 def test_ready_audit_globals_is_stubbed(client: TestClient) -> None:
@@ -151,6 +162,115 @@ def test_ready_names_failing_dependency_via_real_connect_error(
     assert result.status == "unreachable"
     assert result.required is True
     assert result.detail and "127.0.0.1:59321" in result.detail
+
+
+# ---------------------------------------------------------------------------
+# /ready — Week-2 dependencies (PRP-14): document storage, vector index, reranker
+# ---------------------------------------------------------------------------
+
+
+def test_ready_week2_deps_ok_when_reachable(client: TestClient) -> None:
+    """With the local stack + Week-2 deps installed, all three report ok and
+    are marked non-gating."""
+
+    checks = client.get("/ready").json()["checks"]
+    for name in ("document_storage", "vector_index", "reranker"):
+        assert checks[name]["status"] == "ok", (name, checks[name])
+        assert checks[name]["required"] is False
+
+
+def test_ready_degrades_when_reranker_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stubbed-down Week-2 dependency DEGRADES readiness (not a 503, not a
+    binary flip) and is named in the ``degraded`` list."""
+
+    async def _down(*_a: object, **_k: object) -> DependencyStatus:
+        return DependencyStatus(
+            status="degraded",
+            required=False,
+            detail="simulated: reranker model not loadable",
+        )
+
+    monkeypatch.setattr(health, "_check_reranker", _down)
+
+    with TestClient(app) as c:
+        resp = c.get("/ready")
+
+    # Degraded still serves traffic — 200, not 503.
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "degraded"
+    assert body["checks"]["reranker"]["status"] == "degraded"
+    # The down dependency is named.
+    assert "reranker" in body["degraded"]
+
+
+def test_ready_degraded_document_storage_does_not_503(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Document storage is non-gating: unreachable degrades, never 503s."""
+
+    async def _unreachable(*_a: object, **_k: object) -> DependencyStatus:
+        return DependencyStatus(
+            status="unreachable",
+            required=False,
+            detail="ConnectError: simulated Standard REST API outage",
+        )
+
+    monkeypatch.setattr(health, "_check_document_storage", _unreachable)
+
+    with TestClient(app) as c:
+        resp = c.get("/ready")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "degraded"
+    assert "document_storage" in body["degraded"]
+
+
+def test_required_dep_down_still_not_ready_over_degraded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A required dep down wins over a degraded Week-2 dep: 503 not_ready."""
+
+    async def _openemr_down(*_a: object, **_k: object) -> DependencyStatus:
+        return DependencyStatus(
+            status="unreachable", required=True, detail="simulated outage"
+        )
+
+    async def _reranker_down(*_a: object, **_k: object) -> DependencyStatus:
+        return DependencyStatus(status="degraded", required=False, detail="simulated")
+
+    monkeypatch.setattr(health, "_check_openemr", _openemr_down)
+    monkeypatch.setattr(health, "_check_reranker", _reranker_down)
+
+    with TestClient(app) as c:
+        resp = c.get("/ready")
+
+    assert resp.status_code == 503
+    assert resp.json()["status"] == "not_ready"
+
+
+async def test_document_storage_probe_treats_401_as_reachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = health.get_settings()
+
+    class _Resp:
+        status_code = 401
+
+    class _FakeClient:
+        async def get(self, _url: str, **_kwargs: object) -> _Resp:
+            return _Resp()
+
+    result = await health._check_document_storage(_FakeClient(), settings)  # type: ignore[arg-type]
+    assert result.status == "ok"
+    assert result.required is False
+
+
+async def test_vector_index_probe_reports_corpus(monkeypatch: pytest.MonkeyPatch) -> None:
+    result = await health._check_vector_index(health.get_settings())
+    assert result.status == "ok"
+    assert "chunks" in (result.detail or "")
 
 
 # ---------------------------------------------------------------------------

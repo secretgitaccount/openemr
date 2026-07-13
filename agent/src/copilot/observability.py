@@ -24,7 +24,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from copilot.config import Settings, get_settings
 
@@ -46,6 +46,13 @@ __all__ = [
     "record_verification",
     "record_tool_result",
     "record_event",
+    # Per-encounter W2 metrics (PRP-14, FR-9)
+    "MODEL_PRICING_USD_PER_MTOK",
+    "estimate_cost_usd",
+    "StepLatency",
+    "WorkerLatency",
+    "EncounterMetrics",
+    "record_encounter_metrics",
 ]
 
 REDACTED = "[REDACTED]"
@@ -106,6 +113,28 @@ _SAFE_KEYS: frozenset[str] = frozenset(
         "output_tokens",
         "retry_count",
         "attempt",
+        # per-encounter W2 metric keys (PRP-14, FR-9) — every value under these
+        # keys is a structural/operational measurement (a node name, a count, a
+        # latency, a cost, a confidence, an eval verdict), never a clinical
+        # value. They are enumerated here so the metrics render in Langfuse
+        # while the allowlist still fails closed on any unknown key.
+        "tool_sequence",
+        "step",
+        "step_latencies",
+        "total_latency_ms",
+        "ingestion_ms",
+        "retrieval_ms",
+        "synthesis_ms",
+        "worker",
+        "worker_latencies",
+        "routing_decisions",
+        "steps",
+        "cost_usd",
+        "retrieval_hit_rate",
+        "extraction_confidence",
+        "eval_outcome",
+        "claims",
+        "dropped_claims",
     }
 )
 
@@ -422,3 +451,140 @@ def record_tool_result(
 
     md: dict[str, Any] = {"tool": tool, "success": success, **(metadata or {})}
     record_event("tool.success" if success else "tool.fail", md)
+
+
+# ---------------------------------------------------------------------------
+# Per-encounter W2 metrics + cost estimate (PRP-14, FR-9)
+# ---------------------------------------------------------------------------
+#
+# One :class:`EncounterMetrics` summarises a single multi-agent answer run — the
+# tool sequence, per-step and per-worker latency, token usage + a cost estimate,
+# retrieval hit rate, extraction confidence, routing decisions, and the eval
+# outcome. It is emitted through :func:`record_encounter_metrics`, which reuses
+# the existing correlation-tagged, PHI-scrubbed :func:`record_event` helper so
+# the metrics event attaches under the run's correlation-ID root in Langfuse
+# right alongside the nested graph spans (it does not fork a second client).
+
+#: Model list price, USD per **million** tokens, as ``(input, output)``. Sourced
+#: from the published Claude pricing (standard rates; Sonnet 5 carries a lower
+#: intro rate through 2026-08-31 — standard is used here so a cost estimate is
+#: never an under-count). Used only for a local dollar *estimate*; the model
+#: itself reports the authoritative token counts.
+MODEL_PRICING_USD_PER_MTOK: dict[str, tuple[float, float]] = {
+    "claude-sonnet-5": (3.00, 15.00),
+    "claude-sonnet-4-6": (3.00, 15.00),
+    "claude-sonnet-4-5": (3.00, 15.00),
+    "claude-opus-4-8": (5.00, 25.00),
+    "claude-opus-4-7": (5.00, 25.00),
+    "claude-haiku-4-5": (1.00, 5.00),
+}
+
+#: Fallback when a model id is unrecognised — Sonnet-tier rates, the family this
+#: agent runs on by default.
+_DEFAULT_PRICING: tuple[float, float] = (3.00, 15.00)
+
+
+def _pricing_for(model: str | None) -> tuple[float, float]:
+    """Return ``(input, output)`` $/MTok for ``model`` (exact, then prefix)."""
+
+    if not model:
+        return _DEFAULT_PRICING
+    if model in MODEL_PRICING_USD_PER_MTOK:
+        return MODEL_PRICING_USD_PER_MTOK[model]
+    for known, price in MODEL_PRICING_USD_PER_MTOK.items():
+        if model.startswith(known):
+            return price
+    return _DEFAULT_PRICING
+
+
+def estimate_cost_usd(model: str | None, input_tokens: int, output_tokens: int) -> float:
+    """Estimate the USD cost of one LLM call from its token counts.
+
+    A local list-price estimate (not a billing figure): input and output tokens
+    are priced from :data:`MODEL_PRICING_USD_PER_MTOK`, defaulting to Sonnet-tier
+    rates for an unknown model. Rounded to 6 decimals (sub-cent granularity).
+
+    >>> estimate_cost_usd("claude-sonnet-5", 1_000_000, 0)
+    3.0
+    """
+
+    in_rate, out_rate = _pricing_for(model)
+    cost = (max(input_tokens, 0) / 1_000_000) * in_rate + (
+        max(output_tokens, 0) / 1_000_000
+    ) * out_rate
+    return round(cost, 6)
+
+
+class StepLatency(BaseModel):
+    """Latency of one named pipeline step (e.g. ``ingestion`` / ``retrieval``)."""
+
+    model_config = {"extra": "forbid", "frozen": True}
+
+    step: str = Field(description="Structural step name (never a clinical value).")
+    latency_ms: float = Field(description="Wall-clock duration of the step, ms.")
+
+
+class WorkerLatency(BaseModel):
+    """Latency + outcome of one graph worker node (per-worker latency, FR-9)."""
+
+    model_config = {"extra": "forbid", "frozen": True}
+
+    worker: str = Field(description="Worker/node name (structural, non-clinical).")
+    latency_ms: float = Field(description="Wall-clock duration of the worker, ms.")
+    success: bool = Field(default=True, description="Whether the worker succeeded.")
+
+
+class EncounterMetrics(BaseModel):
+    """PHI-free metrics for a single Week-2 multi-agent answer run (FR-9).
+
+    Every field is a structural/operational measurement — names, counts,
+    latencies, token totals, a cost estimate, a hit rate, a confidence, an eval
+    verdict — so the whole object is safe to emit. It still passes through
+    :func:`scrub_phi` on the way out (defence in depth): any value that landed
+    under an unexpected key would be redacted rather than leaked.
+    """
+
+    model_config = {"extra": "forbid", "frozen": True}
+
+    correlation_id: str | None = Field(
+        default=None, description="Correlation-ID root the graph spans nest under."
+    )
+    patient_id: str | None = Field(
+        default=None, description="Record identifier (kept; not a clinical value)."
+    )
+    #: Ordered tool/worker invocations for this run (the 'tool sequence').
+    tool_sequence: list[str] = Field(default_factory=list)
+    #: Latency broken down by pipeline step.
+    step_latencies: list[StepLatency] = Field(default_factory=list)
+    total_latency_ms: float | None = Field(default=None)
+    #: Per-worker latency (supervisor's worker nodes).
+    worker_latencies: list[WorkerLatency] = Field(default_factory=list)
+    #: Supervisor routing decisions, as ``from->to`` node-name strings.
+    routing_decisions: list[str] = Field(default_factory=list)
+    steps: int = Field(default=0, description="Number of routing decisions made.")
+    #: Token usage + cost estimate for the synthesis LLM call.
+    model: str | None = Field(default=None)
+    input_tokens: int = Field(default=0)
+    output_tokens: int = Field(default=0)
+    cost_usd: float | None = Field(default=None)
+    #: Retrieval quality + extraction confidence.
+    retrieval_hit_rate: float | None = Field(default=None)
+    extraction_confidence: float | None = Field(default=None)
+    #: Answer shape + eval outcome.
+    claims: int = Field(default=0)
+    dropped_claims: int = Field(default=0)
+    eval_outcome: str | None = Field(
+        default=None, description="Eval verdict, e.g. 'pass' | 'fail' | 'skipped'."
+    )
+
+
+def record_encounter_metrics(metrics: EncounterMetrics) -> None:
+    """Emit one PHI-scrubbed, correlation-tagged per-encounter metrics event.
+
+    Reuses :func:`record_event` (same client, same ``scrub_phi`` pass, same
+    correlation-ID tagging) so the metrics land under the run's correlation-ID
+    root in Langfuse next to the nested graph spans. No-op when observability is
+    disabled. The metrics' own ``correlation_id`` (when set) is preserved.
+    """
+
+    record_event("encounter.metrics", metrics.model_dump())
