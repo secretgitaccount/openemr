@@ -21,6 +21,7 @@ from copilot.api.ui import router as ui_router
 from copilot.api.launch import router as launch_router
 from copilot.api.w2flow import router as w2flow_router
 from copilot.api.preview import router as preview_router
+from copilot.api.chart_documents import router as chart_documents_router
 from copilot.middleware import CorrelationIdMiddleware
 
 
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
     app.include_router(launch_router)  # SMART EHR launch: GET /launch + /launch/callback
     app.include_router(w2flow_router)  # PRP-10 W2 flow: POST /patients/{id}/ask
     app.include_router(preview_router)  # PRP-13 click-to-source: POST /preview/page
+    app.include_router(chart_documents_router)  # PRP-15 ingest-from-chart: GET/POST /patients/{id}/chart-documents
     # (later PRPs append their single include line here)
 
     return app
