@@ -127,9 +127,26 @@ def _dedup(citations: list[SourceCitation]) -> list[SourceCitation]:
 
 
 def _lab_citations(report: LabReport) -> list[SourceCitation]:
-    """Every grounding citation in an extracted lab report."""
+    """Every grounding citation in an extracted lab report.
 
-    return [report.source, *(obs.citation for obs in report.observations)]
+    Each observation's citation is enriched so its ``quote_or_value`` names the
+    test, value, unit and (when concerning) the abnormal flag — e.g.
+    ``"Glucose: 168 mg/dL [high]"``. The synthesis LLM and the UI caption need
+    that label, not a bare number; the bbox in ``field_or_chunk_id`` is left
+    untouched so the click-to-source overlay stays exact, and grounding still
+    keys on ``(source_type, source_id)``.
+    """
+
+    cited: list[SourceCitation] = [report.source]
+    for obs in report.observations:
+        value = obs.value if obs.value is not None else "not reported"
+        label = f"{obs.test_name}: {value}"
+        if obs.value is not None and obs.unit:
+            label += f" {obs.unit}"
+        if obs.abnormal_flag in ("high", "low", "critical"):
+            label += f" [{obs.abnormal_flag}]"
+        cited.append(obs.citation.model_copy(update={"quote_or_value": label}))
+    return cited
 
 
 def _intake_citations(facts: IntakeFacts) -> list[SourceCitation]:

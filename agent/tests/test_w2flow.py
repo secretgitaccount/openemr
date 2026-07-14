@@ -33,6 +33,9 @@ from copilot.schemas.output import Claim, GroundedSummary
 LAB_DOC_ID = "lab_cmp_lipid.pdf"
 GUIDELINE_CHUNK_ID = "hyperkalemia::aha-2024::03"
 
+# PRP-17: a chart document referenced by its stable OpenEMR id (no upload).
+CHART_DOC_ID = "1849"
+
 
 # ---------------------------------------------------------------------------
 # Stub workers (no VLM / no RAG models) + stub synthesizer (no Anthropic)
@@ -90,8 +93,52 @@ def _guideline_evidence() -> GuidelineEvidence:
     return GuidelineEvidence(chunk=chunk, score=8.2, retriever="hybrid")
 
 
+def _chart_glucose_report() -> LabReport:
+    """A bare LabReport as ``extract_chart_document`` returns it (PRP-17).
+
+    The chart-read path yields the validated report directly (not an
+    IngestResult), with every citation grounded to the stable OpenEMR doc id.
+    """
+
+    citation = SourceCitation(
+        source_type="lab_pdf",
+        source_id=CHART_DOC_ID,
+        page_or_section="page 1",
+        field_or_chunk_id="bbox=1.0,2.0,3.0,4.0",
+        quote_or_value="168",
+    )
+    return LabReport(
+        patient_ref=SourceRef(resource_type="Patient", id="a2372c03"),
+        report_date=date(2026, 6, 30),
+        observations=[
+            LabObservation(
+                test_name="Glucose",
+                value="168",
+                unit="mg/dL",
+                reference_range="70-99",
+                collection_date=date(2026, 6, 30),
+                abnormal_flag="high",
+                citation=citation,
+            )
+        ],
+        extraction_confidence=0.9,
+        source=SourceCitation(
+            source_type="lab_pdf",
+            source_id=CHART_DOC_ID,
+            page_or_section="page 1",
+            field_or_chunk_id=None,
+            quote_or_value="Comprehensive Metabolic Panel",
+        ),
+    )
+
+
 def _stub_intake(state):
     return [_lab_ingest_result() for _ in state["attachments"]]
+
+
+def _stub_intake_docid(state):
+    # Mirrors the chart-read worker path: one bare LabReport per doc-id attachment.
+    return [_chart_glucose_report() for _ in state["attachments"]]
 
 
 def _stub_evidence(state):
@@ -102,6 +149,14 @@ def _stub_runner(graph_input):
     return run_graph(
         graph_input,
         intake_extractor=_stub_intake,
+        evidence_retriever=_stub_evidence,
+    )
+
+
+def _stub_runner_docid(graph_input):
+    return run_graph(
+        graph_input,
+        intake_extractor=_stub_intake_docid,
         evidence_retriever=_stub_evidence,
     )
 
@@ -125,9 +180,32 @@ async def _stub_synthesize(question, record_facts, guideline_evidence):
     )
 
 
+async def _stub_synthesize_glucose(question, record_facts, guideline_evidence):
+    return GroundedSummary(
+        headline="Glucose is above range.",
+        must_knows=[
+            Claim(
+                text="Glucose is 168 mg/dL (high).",
+                sources=[SourceRef(resource_type="lab_pdf", id=CHART_DOC_ID)],
+            ),
+            Claim(
+                text="Guideline: elevated glucose warrants review.",
+                sources=[SourceRef(resource_type="guideline", id=GUIDELINE_CHUNK_ID)],
+            ),
+        ],
+        caveats=["Confirm with a fasting draw."],
+    )
+
+
 def _client() -> TestClient:
     app.dependency_overrides[get_graph_runner] = lambda: _stub_runner
     app.dependency_overrides[get_answer_synthesizer] = lambda: _stub_synthesize
+    return TestClient(app)
+
+
+def _client_docid() -> TestClient:
+    app.dependency_overrides[get_graph_runner] = lambda: _stub_runner_docid
+    app.dependency_overrides[get_answer_synthesizer] = lambda: _stub_synthesize_glucose
     return TestClient(app)
 
 
@@ -144,9 +222,49 @@ def _ask() -> dict:
     return resp.json()
 
 
+def _ask_docid() -> dict:
+    # No attachment file — just the id of a document already in the chart.
+    body = {
+        "question": "Is this glucose result concerning per guidelines?",
+        "attachments": [{"document_id": CHART_DOC_ID, "doc_type": "lab_pdf"}],
+    }
+    try:
+        resp = _client_docid().post("/patients/a2372c03/ask", json=body)
+    finally:
+        app.dependency_overrides.clear()
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
+
+def test_ask_with_document_id_grounds_on_chart_doc() -> None:
+    # PRP-17: /ask with only a document_id (no upload) grounds on that chart
+    # document's values -> record_facts populated + cited to the doc id, AND
+    # guideline evidence retrieved, kept as distinct fields.
+    body = _ask_docid()
+
+    assert body["record_facts"], "record_facts must be populated from the chart doc"
+    assert body["guideline_evidence"]
+
+    record_ids = {(c["source_type"], c["source_id"]) for c in body["record_facts"]}
+    assert ("lab_pdf", CHART_DOC_ID) in record_ids  # cited to the chart doc id
+
+    # The glucose value is grounded as a record fact cited to the doc id.
+    glucose = [
+        c
+        for c in body["record_facts"]
+        if c["source_id"] == CHART_DOC_ID
+        and "Glucose" in c["quote_or_value"]
+        and "168" in c["quote_or_value"]
+    ]
+    assert glucose, "Glucose 168 must be surfaced as a labeled record fact cited to the doc"
+
+    texts = [c["text"] for c in body["answer_claims"]]
+    assert "Glucose is 168 mg/dL (high)." in texts
 
 
 def test_ask_separates_record_facts_from_guideline_evidence() -> None:
