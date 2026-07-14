@@ -116,9 +116,19 @@
   .docsec { max-width: 1200px; margin: 0 auto 26px; padding: 0 20px;
             display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
   @media (max-width: 860px) { .docsec { grid-template-columns: 1fr; } }
-  .uploadrow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-  .uploadrow input[type=file] { font: inherit; font-size: 12.5px; max-width: 100%; }
-  .uploadrow select { min-width: 150px; }
+  /* chart-document picker — the doctor reads what front desk / nurse / portal uploaded */
+  ul.doclist { list-style: none; margin: 8px 0 0; padding: 0; }
+  ul.doclist li { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 7px;
+                  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; cursor: pointer; }
+  ul.doclist li:hover { background: var(--chip-bg); border-color: var(--accent); }
+  ul.doclist li.active { border-color: var(--accent); background: var(--chip-bg); }
+  .doclist .dinfo { min-width: 0; }
+  .doclist .dtitle { font-weight: 650; }
+  .doclist .dmeta { color: var(--muted); font-size: 12px; text-transform: capitalize; }
+  .doclist .dactions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .doclist .dactions select { min-width: 128px; padding: 6px 8px; }
+  .doclist .readbtn { padding: 7px 13px; font-size: 12px; }
+  .docempty { color: var(--muted); font-size: 13px; padding: 12px 2px; line-height: 1.5; }
   .hint { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
   .hint.err { color: var(--refuse-ink); }
 
@@ -202,7 +212,7 @@
     <div class="controls">
       <div class="field">
         <label for="patient">Patient</label>
-        <select id="patient"><option value="">Loading patients…</option></select>
+        <select id="patient" onchange="loadChartDocuments()"><option value="">Loading patients…</option></select>
       </div>
       <button class="load" id="load" onclick="openChart()">Load chart</button>
       <div class="loaded">Chart loaded:<span id="loadedAt">—</span></div>
@@ -256,21 +266,14 @@
   </div>
 </main>
 
-<!-- PRP-13: multimodal document flow — upload, extract, click-to-source (FR-7). -->
+<!-- PRP-16: read documents already on the chart — pick, extract, click-to-source (FR-7). -->
 <section class="docsec" id="docSection">
   <div class="col">
     <div class="card">
-      <div class="banner">Documents — extract, verify, cite</div>
+      <div class="banner">Documents on this chart</div>
       <div class="body">
-        <div class="uploadrow">
-          <input type="file" id="docFile" accept=".pdf,.png,.jpg,.jpeg" onchange="onDocPicked()" />
-          <select id="docType" aria-label="Document type">
-            <option value="lab_pdf">Lab PDF</option>
-            <option value="intake_form">Intake form</option>
-          </select>
-          <button id="extractBtn" onclick="extractDoc()">Extract</button>
-        </div>
-        <div class="hint" id="docHint">Choose a patient above, then upload a lab PDF or intake form to extract its values.</div>
+        <div class="hint" id="docHint">Choose a patient above to see the documents on their chart.</div>
+        <ul class="doclist" id="docList"></ul>
         <div id="confWrap"></div>
         <div id="extracted"></div>
       </div>
@@ -538,18 +541,100 @@ async function ask() {
 }
 
 // ===========================================================================
-// PRP-13 — documents, extraction, and click-to-source with a bbox overlay.
-// The uploaded File stays only in memory (never persisted / localStorage) so
-// the preview endpoint can re-render the exact page a citation points at.
+// PRP-16 — read documents ALREADY on the chart (front desk / nurse / portal),
+// extract them, and click-to-source with a bbox overlay. The doctor never
+// uploads: the citation source_id equals the OpenEMR doc id, so the page
+// endpoint re-renders the exact page a citation points at — nothing is held
+// client-side but the doc titles (for the preview caption).
 // ===========================================================================
-let uploadedDoc = null; // { name, file } — the last extracted document, in memory only.
+const docTitleById = new Map(); // doc_id -> title, for the preview caption only.
 
-function onDocPicked() {
-  const f = $("docFile").files[0];
-  $("docHint").className = "hint";
-  $("docHint").textContent = f
-    ? `Ready to extract “${f.name}”. Pick the type and press Extract.`
-    : "Choose a patient above, then upload a lab PDF or intake form to extract its values.";
+// Best-effort doc_type inference from the title/category; null when ambiguous,
+// so the picker's per-row selector lets the doctor decide.
+function inferDocType(doc) {
+  const s = ((doc.title || "") + " " + (doc.category || "")).toLowerCase();
+  if (/(intake|registration|questionnaire|new[- ]?patient|history form)/.test(s)) return "intake_form";
+  if (/(lab|result|panel|cmp|bmp|cbc|lipid|a1c|hba1c|glucose|metabolic|chem|report)/.test(s)) return "lab_pdf";
+  return null;
+}
+
+async function loadChartDocuments() {
+  const pid = $("patient").value;
+  const hint = $("docHint"), list = $("docList");
+  docTitleById.clear();
+  list.innerHTML = ""; $("confWrap").innerHTML = ""; $("extracted").innerHTML = "";
+  if (!pid) { hint.className = "hint"; hint.textContent = "Choose a patient above to see the documents on their chart."; return; }
+  hint.className = "hint"; hint.innerHTML = '<span class="thinking">Loading documents on this chart…</span>';
+  try {
+    const resp = await fetch(`/patients/${encodeURIComponent(pid)}/chart-documents`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    renderDocList(await resp.json());
+  } catch (e) {
+    hint.className = "hint err"; hint.textContent = "Could not load chart documents: " + e.message;
+  }
+}
+
+function renderDocList(docs) {
+  const hint = $("docHint"), list = $("docList"); list.innerHTML = "";
+  if (!docs || !docs.length) {
+    hint.className = "hint"; hint.textContent = "";
+    const e = document.createElement("div"); e.className = "docempty";
+    e.textContent = "No documents on this chart. Anything the front desk, nursing, or the patient portal uploads will appear here for you to review.";
+    list.appendChild(e); return;
+  }
+  hint.className = "hint"; hint.textContent = "Select a document to read and extract its values.";
+  docs.forEach((d) => {
+    docTitleById.set(d.doc_id, d.title);
+    const li = document.createElement("li");
+
+    const info = document.createElement("div"); info.className = "dinfo";
+    const t = document.createElement("div"); t.className = "dtitle"; t.textContent = d.title; info.appendChild(t);
+    const meta = [d.category, d.date].filter(Boolean).join(" · ");
+    if (meta) { const m = document.createElement("div"); m.className = "dmeta"; m.textContent = meta; info.appendChild(m); }
+    li.appendChild(info);
+
+    const actions = document.createElement("div"); actions.className = "dactions";
+    const sel = document.createElement("select"); sel.setAttribute("aria-label", "Document type");
+    [["lab_pdf", "Lab PDF"], ["intake_form", "Intake form"]].forEach(([v, txt]) => {
+      const o = document.createElement("option"); o.value = v; o.textContent = txt; sel.appendChild(o);
+    });
+    sel.value = inferDocType(d) || "lab_pdf";
+    sel.onclick = (e) => e.stopPropagation();
+    actions.appendChild(sel);
+
+    const btn = document.createElement("button"); btn.className = "readbtn"; btn.textContent = "Read";
+    btn.onclick = (e) => { e.stopPropagation(); ingestDoc(d, sel.value, li); };
+    actions.appendChild(btn);
+    li.appendChild(actions);
+
+    li.onclick = () => ingestDoc(d, sel.value, li);
+    list.appendChild(li);
+  });
+}
+
+async function ingestDoc(doc, docType, li) {
+  const pid = $("patient").value;
+  const hint = $("docHint");
+  if (!pid) { hint.className = "hint err"; hint.textContent = "Select a patient above first."; return; }
+  [...$("docList").querySelectorAll("li")].forEach((n) => n.classList.remove("active"));
+  if (li) li.classList.add("active");
+  hint.className = "hint"; hint.innerHTML = '<span class="thinking">Reading “' + escapeHtml(doc.title) + '” with the vision model…</span>';
+  $("confWrap").innerHTML = ""; $("extracted").innerHTML = "";
+  try {
+    const url = `/patients/${encodeURIComponent(pid)}/chart-documents/${encodeURIComponent(doc.doc_id)}` +
+      `/ingest?doc_type=${encodeURIComponent(docType)}`;
+    const resp = await fetch(url, { method: "POST" });
+    if (!resp.ok) {
+      const detail = await resp.json().catch(() => ({}));
+      throw new Error(detail.detail || `HTTP ${resp.status}`);
+    }
+    const result = await resp.json();
+    hint.className = "hint"; hint.textContent = `Read “${doc.title}”. Click any value below to highlight its source.`;
+    confIndicator(result.confidence);
+    renderExtracted(result.extracted);
+  } catch (e) {
+    hint.className = "hint err"; hint.textContent = "Read failed: " + e.message;
+  }
 }
 
 function confIndicator(conf) {
@@ -575,46 +660,6 @@ function parsePage(pageOrSection) {
   const m = /page\s+(\d+)/i.exec(pageOrSection || "");
   return m ? parseInt(m[1], 10) : 1;
 }
-// There is exactly one uploaded document held in memory, and PRP-06's ingestion
-// rewrites a citation's source_id to the server-side temp basename (e.g.
-// "tmp2bd959h1.pdf"), which never equals the browser filename. So a
-// document-source citation always refers to the one doc we hold — resolve it
-// directly rather than gating on a filename equality that can never hold.
-function fileForSource() {
-  return uploadedDoc ? uploadedDoc.file : null;
-}
-
-async function extractDoc() {
-  const pid = $("patient").value;
-  const f = $("docFile").files[0];
-  const hint = $("docHint");
-  if (!pid) { hint.className = "hint err"; hint.textContent = "Select a patient above first."; return; }
-  if (!f) { hint.className = "hint err"; hint.textContent = "Choose a file to upload."; return; }
-  $("extractBtn").disabled = true;
-  hint.className = "hint"; hint.innerHTML = '<span class="thinking">Extracting — reading the document with the vision model…</span>';
-  $("confWrap").innerHTML = ""; $("extracted").innerHTML = "";
-  try {
-    const fd = new FormData();
-    fd.append("file", f);
-    fd.append("doc_type", $("docType").value);
-    const resp = await fetch(`/patients/${encodeURIComponent(pid)}/documents`, { method: "POST", body: fd });
-    if (!resp.ok) {
-      const detail = await resp.json().catch(() => ({}));
-      throw new Error(detail.detail || `HTTP ${resp.status}`);
-    }
-    const result = await resp.json();
-    uploadedDoc = { name: f.name, file: f }; // keep the bytes in memory for previews
-    hint.className = "hint";
-    hint.textContent = `Extracted ${uploadedDoc.name}. Click any value below to highlight its source.`;
-    confIndicator(result.confidence);
-    renderExtracted(result.extracted);
-  } catch (e) {
-    hint.className = "hint err"; hint.textContent = "Extraction failed: " + e.message;
-  } finally {
-    $("extractBtn").disabled = false;
-  }
-}
-
 function citeLi(label, valueHtml, flag, citation) {
   const li = document.createElement("li");
   const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = label; li.appendChild(nm);
@@ -662,22 +707,26 @@ function setPreview(node) { const p = $("previewPane"); p.innerHTML = ""; p.appe
 function previewMsg(text) { const d = document.createElement("div"); d.className = "preview-empty"; d.textContent = text; setPreview(d); }
 
 // Central click-to-source handler. Guideline sources reveal their snippet;
-// document sources render the page image with the exact word-box overlaid
-// (or a page-level highlight when there is no box — the degradation path).
+// chart-document sources (source_id == the OpenEMR doc id) render the page
+// image with the exact word-box overlaid (or a page-level highlight when
+// there is no box — the degradation path). A record fact read back from a
+// FHIR resource has no page to render, so it shows its value + attribution.
 async function openCitation(cit) {
   if (!cit) return;
   if (cit.source_type === "guideline") { showSnippet(cit); return; }
-  const file = fileForSource();
-  if (!file) {
+  const pid = $("patient").value;
+  const isDoc = cit.source_type === "lab_pdf" || cit.source_type === "intake_form";
+  if (!pid || !isDoc) {
     const d = document.createElement("div"); d.className = "snippet";
     d.innerHTML = `<div class="txt">${escapeHtml(cit.quote_or_value)}</div>` +
-      `<div class="attr">${escapeHtml(cit.source_id)}${cit.page_or_section ? " · " + escapeHtml(cit.page_or_section) : ""} — upload a document to view its page.</div>`;
+      `<div class="attr">${escapeHtml(cit.source_id)}${cit.page_or_section ? " · " + escapeHtml(cit.page_or_section) : ""}</div>`;
     setPreview(d); return;
   }
   previewMsg("Rendering source page…");
   try {
-    const fd = new FormData(); fd.append("file", file); fd.append("page", String(parsePage(cit.page_or_section)));
-    const resp = await fetch("/preview/page", { method: "POST", body: fd });
+    const page = parsePage(cit.page_or_section);
+    const url = `/patients/${encodeURIComponent(pid)}/chart-documents/${encodeURIComponent(cit.source_id)}/page/${page}`;
+    const resp = await fetch(url);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const pv = await resp.json();
     renderPage(pv, parseBbox(cit.field_or_chunk_id), cit);
@@ -689,8 +738,8 @@ async function openCitation(cit) {
 function renderPage(pv, bbox, cit) {
   const pane = $("previewPane"); pane.innerHTML = "";
   const cap = document.createElement("div"); cap.className = "pvcap";
-  const grounded = bbox && pv.width_pt;
-  const docName = (uploadedDoc && uploadedDoc.name) || cit.source_id;
+  const grounded = bbox && pv.width_pt && !pv.is_image;
+  const docName = docTitleById.get(cit.source_id) || cit.source_id;
   cap.innerHTML = `<b>${escapeHtml(docName)}</b> · ${escapeHtml(cit.page_or_section || "page 1")}` +
     (grounded ? ` · highlighting “${escapeHtml(cit.quote_or_value)}”` : " · page-level highlight (no text box available)");
   pane.appendChild(cap);
@@ -829,6 +878,7 @@ async function init() {
     sel.appendChild(o);
   }
   sel.value = launched;
+  loadChartDocuments();
   openChart();
 }
 init();
