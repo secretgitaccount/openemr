@@ -47,6 +47,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from copilot.config import Settings, get_settings
 from copilot.documents.extract import VLMExtractor, extract_intake, extract_lab
+from copilot.documents.extract_cache import extract_cache
 from copilot.documents.ingest import DOC_TYPES, IngestError, IngestResult
 from copilot.documents.openemr_write import OpenEmrWriter, persist_observations
 from copilot.documents.schemas import (
@@ -86,6 +87,7 @@ __all__ = [
     "list_chart_documents",
     "fetch_document_bytes",
     "ingest_chart_document",
+    "extract_chart_document",
 ]
 
 logger = get_logger(__name__)
@@ -586,6 +588,82 @@ async def _extract_bytes(
     return await extract_intake(file_path)
 
 
+async def _fetch_and_extract(
+    patient_id: str,
+    doc_id: str,
+    doc_type: str,
+    *,
+    reader: ChartReader | None,
+    extractor: VLMExtractor | None,
+) -> LabReport | IntakeFacts:
+    """Fetch the chart document's bytes, extract, and ground citations to ``doc_id``.
+
+    The shared read-side kernel of both :func:`ingest_chart_document` (read +
+    persist) and :func:`extract_chart_document` (extract-only): it never persists
+    or populates the cache — its callers own those steps.
+    """
+
+    data = await fetch_document_bytes(patient_id, doc_id, reader=reader)
+    suffix = _sniff_suffix(data, None)
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    try:
+        tmp.write(data)
+        tmp.flush()
+        tmp.close()
+        extracted = await _extract_bytes(Path(tmp.name), doc_type, extractor)
+    finally:
+        os.unlink(tmp.name)
+
+    # Ground every citation (and the report's own source) to the stable OpenEMR
+    # document id so the UI maps citation -> chart document.
+    return _relabel_extracted(extracted, doc_id)
+
+
+async def extract_chart_document(
+    patient_id: str,
+    doc_id: str,
+    doc_type: str,
+    *,
+    reader: ChartReader | None = None,
+    extractor: VLMExtractor | None = None,
+) -> LabReport | IntakeFacts:
+    """Extract a chart document's facts — **cache-first, no re-persist** (PRP-17).
+
+    The read path for ``/ask`` grounding: when the doctor has already **read** the
+    document (:func:`ingest_chart_document` warmed :data:`extract_cache`), this
+    returns that stored extraction and **skips the second VLM call** entirely; on
+    a cold cache it fetches + extracts once (grounded to ``doc_id``) and warms the
+    cache. Unlike :func:`ingest_chart_document` it never re-persists / writes
+    OpenEMR records — it only reads and extracts, so an ``/ask`` can never leave a
+    stray persisted record. ``doc_type`` must be one of
+    :data:`~copilot.documents.ingest.DOC_TYPES` (else :class:`IngestError`).
+    """
+
+    doc_type = (doc_type or "").strip()
+    if doc_type not in DOC_TYPES:
+        raise IngestError(
+            f"unknown doc_type {doc_type!r}; expected one of {sorted(DOC_TYPES)}"
+        )
+
+    cached = extract_cache.get(patient_id, doc_id)
+    if cached is not None:
+        logger.info("chart_extract.cache_hit", doc_type=doc_type, doc_id=doc_id)
+        return cached
+
+    token = None if current_correlation_id() else set_correlation_id(new_correlation_id())
+    try:
+        logger.info("chart_extract.start", doc_type=doc_type, doc_id=doc_id)
+        extracted = await _fetch_and_extract(
+            patient_id, doc_id, doc_type, reader=reader, extractor=extractor
+        )
+        extract_cache.put(patient_id, doc_id, extracted)
+        logger.info("chart_extract.ok", doc_type=doc_type, doc_id=doc_id)
+        return extracted
+    finally:
+        if token is not None:
+            reset_correlation_id(token)
+
+
 async def ingest_chart_document(
     patient_id: str,
     doc_id: str,
@@ -602,7 +680,9 @@ async def ingest_chart_document(
     ``source`` at that document and every extraction citation is relabelled so
     its ``source_id`` is ``doc_id`` (stable), letting the UI map a citation back
     to the chart document. Derived lab values are still persisted idempotently
-    (PRP-05). ``doc_type`` must be one of
+    (PRP-05). The extraction is also written to :data:`extract_cache` so a
+    subsequent ``/ask`` grounded on the same document reuses it without a second
+    VLM call (PRP-17). ``doc_type`` must be one of
     :data:`~copilot.documents.ingest.DOC_TYPES` (else :class:`IngestError`).
     ``reader`` / ``extractor`` / ``writer`` may be injected for testing.
     """
@@ -617,20 +697,13 @@ async def ingest_chart_document(
     try:
         logger.info("chart_ingest.start", doc_type=doc_type, doc_id=doc_id)
 
-        data = await fetch_document_bytes(patient_id, doc_id, reader=reader)
-        suffix = _sniff_suffix(data, None)
-        tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-        try:
-            tmp.write(data)
-            tmp.flush()
-            tmp.close()
-            extracted = await _extract_bytes(Path(tmp.name), doc_type, extractor)
-        finally:
-            os.unlink(tmp.name)
+        extracted = await _fetch_and_extract(
+            patient_id, doc_id, doc_type, reader=reader, extractor=extractor
+        )
 
-        # Ground every citation (and the report's own source) to the stable
-        # OpenEMR document id so the UI maps citation -> chart document.
-        extracted = _relabel_extracted(extracted, doc_id)
+        # Warm the extraction cache so the doctor's "Read" makes the subsequent
+        # "Ask" (extract_chart_document) reuse this without a second VLM call.
+        extract_cache.put(patient_id, doc_id, extracted)
 
         # The source is the EXISTING chart document — do NOT re-upload it.
         source = SourceRef(resource_type="Document", id=doc_id)

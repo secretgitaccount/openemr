@@ -11,6 +11,7 @@ the graph always terminates (a max-steps guard prevents infinite loops).
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from copilot import observability
 from copilot.graph.state import Attachment, GraphInput
@@ -58,6 +59,61 @@ def _evidence_only_input() -> GraphInput:
         question="What is the target HbA1c for a type 2 diabetic?",
         correlation_id="corr-ev-1",
     )
+
+
+def _docid_input() -> GraphInput:
+    """A question grounded on a chart document referenced by id (PRP-17)."""
+
+    return GraphInput(
+        patient_id="a2372c03",
+        question="Is this glucose result concerning per guidelines?",
+        attachments=[Attachment(document_id="1849", doc_type="lab_pdf")],
+        correlation_id="corr-docid-1",
+    )
+
+
+def _stub_intake_docid(state):
+    """Pretend the chart-read extractor produced one fact per doc-id attachment."""
+
+    return [{"extracted_doc_id": att.document_id} for att in state["attachments"]]
+
+
+# ---------------------------------------------------------------------------
+# Attachment contract: exactly one of file_path / document_id (PRP-17)
+# ---------------------------------------------------------------------------
+
+
+def test_attachment_requires_a_source() -> None:
+    with pytest.raises(ValidationError):
+        Attachment(doc_type="lab_pdf")  # neither file_path nor document_id
+
+
+def test_attachment_rejects_both_sources() -> None:
+    with pytest.raises(ValidationError):
+        Attachment(doc_type="lab_pdf", file_path="/tmp/x.pdf", document_id="1849")
+
+
+def test_attachment_accepts_exactly_one_source() -> None:
+    by_path = Attachment(doc_type="lab_pdf", file_path="/tmp/x.pdf")
+    by_id = Attachment(doc_type="lab_pdf", document_id="1849")
+    assert by_path.document_id is None
+    assert by_id.file_path is None
+
+
+def test_document_id_attachment_routes_through_extractor() -> None:
+    # A document_id (chart-read) attachment routes exactly like a file_path one:
+    # supervisor -> intake_extractor -> evidence_retriever -> done, with the
+    # extracted fact populated (grounded to that doc id downstream).
+    result = run_graph(
+        _docid_input(),
+        intake_extractor=_stub_intake_docid,
+        evidence_retriever=_stub_evidence,
+    )
+
+    assert result.done is True
+    assert result.extracted == [{"extracted_doc_id": "1849"}]
+    route = [h.to_node for h in result.handoffs]
+    assert route == ["intake_extractor", "evidence_retriever", "done"]
 
 
 # ---------------------------------------------------------------------------

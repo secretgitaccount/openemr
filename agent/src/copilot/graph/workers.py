@@ -23,6 +23,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from copilot.documents.chart_read import extract_chart_document
 from copilot.documents.ingest import attach_and_extract
 from copilot.observability import trace
 from copilot.rag.retrieve import retrieve_evidence
@@ -44,23 +45,40 @@ WorkerFn = Callable[[GraphState], list[Any]]
 
 
 def default_intake_extractor(state: GraphState) -> list[Any]:
-    """Extract every attachment via PRP-06 ``attach_and_extract``.
+    """Extract every attachment, choosing the path the ``Attachment`` names.
 
-    Runs the async ingest tool synchronously (the graph is invoked outside any
-    event loop). Returns one ``IngestResult`` per attachment. Injected out in
-    tests — no VLM/key is touched there.
+    * ``document_id`` set → the PRP-15/17 chart-read path
+      (:func:`copilot.documents.chart_read.extract_chart_document`): it grounds
+      ``/ask`` on a document **already in the chart** and is **cache-first** — if
+      the doctor already read that document the extraction is reused (no second
+      VLM call) and, either way, nothing is re-persisted.
+    * ``file_path`` set → the PRP-06 upload path
+      (:func:`copilot.documents.ingest.attach_and_extract`).
+
+    Runs the async tools synchronously (the graph is invoked outside any event
+    loop). Returns one extracted result per attachment. Injected out in tests —
+    no VLM/key is touched there.
     """
 
     patient_id = state["patient_id"]
     results: list[Any] = []
     for attachment in state["attachments"]:
-        results.append(
-            asyncio.run(
-                attach_and_extract(
-                    patient_id, attachment.file_path, attachment.doc_type
+        if attachment.document_id is not None:
+            results.append(
+                asyncio.run(
+                    extract_chart_document(
+                        patient_id, attachment.document_id, attachment.doc_type
+                    )
                 )
             )
-        )
+        else:
+            results.append(
+                asyncio.run(
+                    attach_and_extract(
+                        patient_id, attachment.file_path, attachment.doc_type
+                    )
+                )
+            )
     return results
 
 

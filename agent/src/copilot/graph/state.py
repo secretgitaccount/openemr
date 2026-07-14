@@ -21,7 +21,7 @@ import operator
 from datetime import datetime
 from typing import Annotated, Any, TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 __all__ = [
     "Attachment",
@@ -35,15 +35,41 @@ __all__ = [
 class Attachment(BaseModel):
     """A document attached to / referenced by the question, awaiting extraction.
 
-    ``file_path`` points at the source document and ``doc_type`` selects the
-    PRP-06 extraction path (``lab_pdf`` / ``intake_form``). Frozen +
-    ``extra="forbid"`` like every other contract in the codebase.
+    A document is named **exactly one** of two ways and ``doc_type`` selects the
+    extraction path (``lab_pdf`` / ``intake_form``):
+
+    * ``file_path`` — a source document the doctor uploaded through our tool
+      (the PRP-06 ``attach_and_extract`` upload path); or
+    * ``document_id`` — the stable OpenEMR id of a document **already in the
+      chart** (the PRP-15 chart-read path), so ``/ask`` can ground against the
+      very document the doctor is reading and reuse that read's extraction
+      (PRP-17) instead of re-uploading or re-running the VLM.
+
+    Exactly one of the two must be set (enforced by :meth:`_exactly_one_source`).
+    Frozen + ``extra="forbid"`` like every other contract in the codebase.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    file_path: str = Field(description="Path to the source document to extract.")
     doc_type: str = Field(description="PRP-06 doc type, e.g. 'lab_pdf' / 'intake_form'.")
+    file_path: str | None = Field(
+        default=None,
+        description="Path to an uploaded source document to extract (upload path).",
+    )
+    document_id: str | None = Field(
+        default=None,
+        description="Stable OpenEMR id of a chart document to extract (chart-read path).",
+    )
+
+    @model_validator(mode="after")
+    def _exactly_one_source(self) -> Attachment:
+        """Require exactly one of ``file_path`` / ``document_id`` (never both/neither)."""
+
+        if bool(self.file_path) == bool(self.document_id):
+            raise ValueError(
+                "Attachment requires exactly one of 'file_path' or 'document_id'."
+            )
+        return self
 
 
 class Handoff(BaseModel):
