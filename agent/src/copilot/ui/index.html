@@ -287,6 +287,7 @@
                  onkeydown="if(event.key==='Enter') w2ask()" />
           <button id="w2btn" onclick="w2ask()">Ask</button>
         </div>
+        <div id="w2grounding" class="hint"></div>
         <div id="w2answer"></div>
       </div>
     </div>
@@ -549,6 +550,10 @@ async function ask() {
 // ===========================================================================
 const docTitleById = new Map(); // doc_id -> title, for the preview caption only.
 
+// The chart document the doctor just read — grounds the "Ask with sources" box
+// so /ask extracts it and returns record_facts. {document_id, doc_type} | null.
+let currentDoc = null;
+
 // Best-effort doc_type inference from the title/category; null when ambiguous,
 // so the picker's per-row selector lets the doctor decide.
 function inferDocType(doc) {
@@ -562,6 +567,7 @@ async function loadChartDocuments() {
   const pid = $("patient").value;
   const hint = $("docHint"), list = $("docList");
   docTitleById.clear();
+  currentDoc = null; updateGrounding(null);
   list.innerHTML = ""; $("confWrap").innerHTML = ""; $("extracted").innerHTML = "";
   if (!pid) { hint.className = "hint"; hint.textContent = "Choose a patient above to see the documents on their chart."; return; }
   hint.className = "hint"; hint.innerHTML = '<span class="thinking">Loading documents on this chart…</span>';
@@ -632,6 +638,10 @@ async function ingestDoc(doc, docType, li) {
     hint.className = "hint"; hint.textContent = `Read “${doc.title}”. Click any value below to highlight its source.`;
     confIndicator(result.confidence);
     renderExtracted(result.extracted);
+    // Ground the "Ask with sources" box on this just-read document so /ask
+    // extracts it and returns the patient's own record_facts.
+    currentDoc = { document_id: doc.doc_id, doc_type: docType };
+    updateGrounding(doc.title);
   } catch (e) {
     hint.className = "hint err"; hint.textContent = "Read failed: " + e.message;
   }
@@ -779,6 +789,15 @@ function escapeHtml(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// Show which just-read document (if any) is grounding the Ask box.
+function updateGrounding(title) {
+  const el = $("w2grounding");
+  if (!el) return;
+  el.textContent = title
+    ? `Grounded on “${title}” — the answer will include this document's record facts.`
+    : "";
+}
+
 // --- W2 grounded answer: record facts and guideline evidence kept separate ---
 async function w2ask() {
   const pid = $("patient").value;
@@ -788,9 +807,12 @@ async function w2ask() {
   if (!q) return;
   $("w2btn").disabled = true;
   host.innerHTML = '<div class="thinking">Answering — routing the graph and grounding every claim…</div>';
+  // Attach the just-read document so /ask extracts it and returns record_facts;
+  // with nothing read yet, attachments:[] still answers from guideline evidence.
+  const attachments = currentDoc ? [currentDoc] : [];
   try {
     const resp = await fetch(`/patients/${encodeURIComponent(pid)}/ask`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q }),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q, attachments }),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     renderW2(await resp.json());
