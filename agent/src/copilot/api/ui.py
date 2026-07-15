@@ -49,9 +49,17 @@ async def get_ui_fhir_client() -> AsyncIterator[FhirClient]:
 
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def index() -> HTMLResponse:
-    """Serve the single-page demo UI."""
+    """Serve the single-page demo UI.
 
-    return HTMLResponse(_INDEX_HTML.read_text(encoding="utf-8"))
+    Sent ``no-store`` so the browser always fetches the current page instead of
+    a stale cached copy — the UI is a single self-contained file that changes
+    across builds, and a cached copy silently breaks click-to-source / layout.
+    """
+
+    return HTMLResponse(
+        _INDEX_HTML.read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
 
 
 @router.get("/patients")
