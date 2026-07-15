@@ -42,9 +42,16 @@ from copilot.documents.extract import (
     LabObservationExtraction,
     VLMExtractor,
 )
+from copilot.documents.extract_cache import extract_cache
 from copilot.documents.ingest import IngestError
 from copilot.documents.openemr_write import OpenEmrRestClient, OpenEmrWriter
-from copilot.documents.schemas import LabReport
+from copilot.documents.schemas import (
+    CitedList,
+    IntakeDemographics,
+    IntakeFacts,
+    LabReport,
+    SourceCitation,
+)
 
 FHIR = "http://oemr.test/apis/default/fhir"
 API = "http://oemr.test/apis/default/api"
@@ -327,3 +334,116 @@ async def test_ingest_chart_document_grounds_citations_to_doc_id() -> None:
 async def test_ingest_chart_document_unknown_doc_type_raises() -> None:
     with pytest.raises(IngestError):
         await ingest_chart_document(PUUID, DOC_ID, "radiology_dicom", reader=_reader())
+
+
+# ---------------------------------------------------------------------------
+# ingest is cache-first: re-ingesting a doc read this session skips the VLM
+# ---------------------------------------------------------------------------
+#
+# The UI auto-reads every chart document on each chart load, so the SAME
+# (patient, doc) is ingested repeatedly. The extraction step must be
+# cache-first: the first ingest runs the VLM and warms the cache; every later
+# ingest of the same doc reuses the cached extraction (no second VLM call) and
+# only re-runs the idempotent persist. These use duck-typed reader/extractor
+# stubs (no key, no network) and the intake path (no derived-write path -> no
+# writer needed), so they isolate the extractor call count cleanly.
+
+
+def _intake_cit(source_id: str = "raw-tmp-name") -> SourceCitation:
+    return SourceCitation(
+        source_type="intake_form",
+        source_id=source_id,
+        page_or_section="page 1",
+        quote_or_value="none reported",
+    )
+
+
+def _intake_facts() -> IntakeFacts:
+    return IntakeFacts(
+        demographics=IntakeDemographics(
+            name=None, dob=None, sex=None, citation=_intake_cit()
+        ),
+        chief_concern=None,
+        current_medications=CitedList(items=[], citation=_intake_cit()),
+        allergies=CitedList(items=[], citation=_intake_cit()),
+        family_history=CitedList(items=[], citation=_intake_cit()),
+        extraction_confidence=0.8,
+        source=_intake_cit(),
+    )
+
+
+class _FakeReader:
+    """A chart reader stub that returns fixed bytes and counts fetches."""
+
+    def __init__(self, data: bytes = b"%PDF-1.4 fake") -> None:
+        self._data = data
+        self.fetch_calls = 0
+
+    async def fetch_document_bytes(self, patient_id: str, doc_id: str) -> bytes:
+        self.fetch_calls += 1
+        return self._data
+
+
+class _CountingExtractor:
+    """A VLM stand-in that returns a fixed extraction and counts invocations."""
+
+    def __init__(self, result: IntakeFacts) -> None:
+        self._result = result
+        self.calls = 0
+
+    async def extract_intake(self, file_path: object) -> IntakeFacts:
+        self.calls += 1
+        return self._result
+
+    async def extract_lab(self, file_path: object) -> IntakeFacts:  # pragma: no cover
+        self.calls += 1
+        return self._result
+
+
+@pytest.fixture(autouse=True)
+def _clear_extract_cache() -> None:
+    extract_cache.clear()
+
+
+async def test_reingest_same_doc_runs_vlm_exactly_once() -> None:
+    reader = _FakeReader()
+    extractor = _CountingExtractor(_intake_facts())
+
+    # First ingest: cold cache -> extract (VLM) + persist.
+    first = await ingest_chart_document(
+        PUUID, DOC_ID, "intake_form", reader=reader, extractor=extractor
+    )
+    assert extractor.calls == 1
+    assert reader.fetch_calls == 1
+    assert extract_cache.get(PUUID, DOC_ID) is not None  # cache warmed
+
+    # Second ingest of the SAME (patient, doc) — what auto-read does on every
+    # chart load. Cache hit: no second VLM call, no re-fetch of the bytes.
+    second = await ingest_chart_document(
+        PUUID, DOC_ID, "intake_form", reader=reader, extractor=extractor
+    )
+    assert extractor.calls == 1  # VLM ran exactly ONCE across both ingests
+    assert reader.fetch_calls == 1  # bytes not re-fetched on the cache hit
+
+    # Both ingests return equivalent extracted values, grounded to the doc id.
+    assert isinstance(first.extracted, IntakeFacts)
+    assert isinstance(second.extracted, IntakeFacts)
+    assert second.extracted == first.extracted
+    assert second.extracted.source.source_id == DOC_ID
+    assert second.confidence == first.confidence
+
+
+async def test_ingest_cold_cache_extracts_once() -> None:
+    reader = _FakeReader()
+    extractor = _CountingExtractor(_intake_facts())
+
+    result = await ingest_chart_document(
+        PUUID, DOC_ID, "intake_form", reader=reader, extractor=extractor
+    )
+
+    # Cold cache still extracts exactly once (behavior identical to before).
+    assert extractor.calls == 1
+    assert reader.fetch_calls == 1
+    assert isinstance(result.extracted, IntakeFacts)
+    assert result.extracted.source.source_id == DOC_ID
+    assert extract_cache.get(PUUID, DOC_ID) is not None

@@ -680,9 +680,15 @@ async def ingest_chart_document(
     ``source`` at that document and every extraction citation is relabelled so
     its ``source_id`` is ``doc_id`` (stable), letting the UI map a citation back
     to the chart document. Derived lab values are still persisted idempotently
-    (PRP-05). The extraction is also written to :data:`extract_cache` so a
-    subsequent ``/ask`` grounded on the same document reuses it without a second
-    VLM call (PRP-17). ``doc_type`` must be one of
+    (PRP-05).
+
+    Extraction is **cache-first**: the UI auto-reads every chart document on each
+    chart load, so this is called repeatedly for the same ``(patient_id,
+    doc_id)``. The first ingest extracts (VLM) and warms :data:`extract_cache`;
+    every later ingest of the same document reuses the cached extraction (no
+    second VLM call) and only re-runs the idempotent persist. A subsequent
+    ``/ask`` grounded on the same document (:func:`extract_chart_document`)
+    likewise reuses it (PRP-17). ``doc_type`` must be one of
     :data:`~copilot.documents.ingest.DOC_TYPES` (else :class:`IngestError`).
     ``reader`` / ``extractor`` / ``writer`` may be injected for testing.
     """
@@ -697,13 +703,22 @@ async def ingest_chart_document(
     try:
         logger.info("chart_ingest.start", doc_type=doc_type, doc_id=doc_id)
 
-        extracted = await _fetch_and_extract(
-            patient_id, doc_id, doc_type, reader=reader, extractor=extractor
-        )
-
-        # Warm the extraction cache so the doctor's "Read" makes the subsequent
-        # "Ask" (extract_chart_document) reuse this without a second VLM call.
-        extract_cache.put(patient_id, doc_id, extracted)
+        # Cache-first extraction: the UI auto-reads every chart document on each
+        # chart load, so the SAME (patient, doc) is ingested repeatedly. A doc
+        # already read this session is in extract_cache — reuse that extraction
+        # and skip the ~20s VLM call. Only the persist step (below) re-runs, and
+        # it is idempotent. Cold cache = extract once + warm the cache (as before).
+        extracted = extract_cache.get(patient_id, doc_id)
+        if extracted is not None:
+            logger.info("chart_ingest.cache_hit", doc_type=doc_type, doc_id=doc_id)
+        else:
+            extracted = await _fetch_and_extract(
+                patient_id, doc_id, doc_type, reader=reader, extractor=extractor
+            )
+            # Warm the extraction cache so a subsequent read/ask on the same
+            # document (this ingest, or extract_chart_document) reuses it
+            # without a second VLM call.
+            extract_cache.put(patient_id, doc_id, extracted)
 
         # The source is the EXISTING chart document — do NOT re-upload it.
         source = SourceRef(resource_type="Document", id=doc_id)
