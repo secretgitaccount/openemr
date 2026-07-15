@@ -113,9 +113,6 @@
 
   /* --- PRP-13: documents · extraction · click-to-source · bbox overlay --- */
   :root { --guide: #5b3ea6; --guide-bg: #efeaf9; --guide-line: #cabfe9; }
-  .docsec { max-width: 1200px; margin: 0 auto 26px; padding: 0 20px;
-            display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
-  @media (max-width: 860px) { .docsec { grid-template-columns: 1fr; } }
   /* chart-document picker — the doctor reads what front desk / nurse / portal uploaded */
   ul.doclist { list-style: none; margin: 8px 0 0; padding: 0; }
   ul.doclist li { padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 7px;
@@ -184,8 +181,11 @@
   .empty { color: var(--muted); font-size: 12.5px; margin: 6px 0; }
 
   /* source preview pane + bbox overlay */
+  /* Source preview: sensible bounds so the empty state isn't a huge void and
+     a rendered page can't run away vertically (it scrolls inside instead). */
+  #previewPane { min-height: 200px; }
   .pagewrap { border: 1px solid var(--line); border-radius: 8px; background: #f6f8fa; padding: 8px;
-              overflow: auto; max-height: 74vh; }
+              overflow: auto; max-height: 70vh; }
   .pageframe { position: relative; display: inline-block; line-height: 0; }
   .pageframe img { display: block; max-width: 100%; height: auto; }
   .hlbox { position: absolute; background: rgba(255,214,10,.34); border: 2px solid #e65a14; border-radius: 2px;
@@ -207,7 +207,8 @@
 </header>
 
 <main>
-  <!-- LEFT column -->
+  <!-- LEFT column: chart controls · summary · what to know · the chart's own
+       documents · the single grounded Ask. -->
   <div class="col">
     <div class="controls">
       <div class="field">
@@ -236,40 +237,9 @@
       <div class="banner">Changes since last visit</div>
       <div class="body" id="changesBody"></div>
     </div>
-  </div>
 
-  <!-- RIGHT column -->
-  <div class="col">
-    <div id="problemsCard" class="card problems hidden">
-      <div class="banner">Known medical problems</div>
-      <div class="body" id="problemsBody"></div>
-    </div>
-    <div id="caveatsCard" class="card caveats hidden">
-      <div class="banner">Caveats</div>
-      <div class="body">
-        <ul id="caveatsBody"></ul>
-        <div class="asof" id="asof"></div>
-        <div id="notices"></div>
-      </div>
-    </div>
-    <div id="askCard" class="card ask hidden">
-      <div class="banner">Ask the co-pilot</div>
-      <div class="body">
-        <div class="chat-log" id="chatlog"></div>
-        <div class="ask-row">
-          <input id="question" type="text" placeholder="e.g. What are her active medications and recent labs?"
-                 onkeydown="if(event.key==='Enter') ask()" />
-          <button id="askbtn" onclick="ask()">Ask</button>
-        </div>
-      </div>
-    </div>
-  </div>
-</main>
-
-<!-- PRP-16: read documents already on the chart — pick, extract, click-to-source (FR-7). -->
-<section class="docsec" id="docSection">
-  <div class="col">
-    <div class="card">
+    <!-- PRP-16: read documents already on the chart — pick, extract, click-to-source (FR-7). -->
+    <div class="card" id="docCard">
       <div class="banner">Documents on this chart</div>
       <div class="body">
         <div class="hint" id="docHint">Choose a patient above to see the documents on their chart.</div>
@@ -279,7 +249,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="w2Card">
       <div class="banner">Ask with sources — record facts vs guidelines</div>
       <div class="body">
         <div class="ask-row">
@@ -293,7 +263,20 @@
     </div>
   </div>
 
+  <!-- RIGHT column: problems · caveats · the click-to-source preview pane. -->
   <div class="col">
+    <div id="problemsCard" class="card problems hidden">
+      <div class="banner">Known medical problems</div>
+      <div class="body" id="problemsBody"></div>
+    </div>
+    <div id="caveatsCard" class="card caveats hidden">
+      <div class="banner">Caveats</div>
+      <div class="body">
+        <ul id="caveatsBody"></ul>
+        <div class="asof" id="asof"></div>
+        <div id="notices"></div>
+      </div>
+    </div>
     <div class="card" id="previewCard">
       <div class="banner">Source preview</div>
       <div class="body">
@@ -301,7 +284,7 @@
       </div>
     </div>
   </div>
-</section>
+</main>
 
 <script>
 // Tunables (adjust freely).
@@ -400,7 +383,7 @@ async function loadPatients() {
 }
 
 function hideAll() {
-  ["refusal", "flagsCard", "summaryCard", "mustCard", "changesCard", "problemsCard", "caveatsCard", "askCard", "genRow"]
+  ["refusal", "flagsCard", "summaryCard", "mustCard", "changesCard", "problemsCard", "caveatsCard", "genRow"]
     .forEach((id) => $(id).classList.add("hidden"));
 }
 
@@ -410,7 +393,11 @@ async function openChart(fullLabs = false, regenerate = false) {
   lastFullLabs = fullLabs;
   loading = true; $("load").disabled = true;
   hideAll();
-  conversationId = null; $("chatlog").innerHTML = "";
+  conversationId = null;
+  // BUG 1 fix: loading a chart must (re)fetch the documents on it. The picker's
+  // <select onchange> only fires on a *change*, so the default-selected patient
+  // never triggered it — clicking Load Chart now populates the list every time.
+  loadChartDocuments();
   const sum = $("summaryCard"); sum.classList.remove("hidden");
   $("headline").innerHTML = '<span class="thinking">' +
     (fullLabs ? "Re-analysing the full lab history — this takes longer…"
@@ -504,7 +491,6 @@ async function openChart(fullLabs = false, regenerate = false) {
       render();
     });
     $("loadedAt").textContent = p.refused ? "—" : stamp();
-    if (conversationId && !p.refused) $("askCard").classList.remove("hidden");
   } catch (e) {
     $("headline").innerHTML = '<span class="err">Request failed: ' + e + "</span>";
   } finally {
@@ -892,16 +878,21 @@ function citeSection(kind, label, cites) {
 async function init() {
   await loadPatients();
   const launched = new URLSearchParams(location.search).get("patient");
-  if (!launched) return;
   const sel = $("patient");
-  if (![...sel.options].some((o) => o.value === launched)) {
-    const o = document.createElement("option");
-    o.value = launched; o.textContent = "Launched patient  ·  " + launched.slice(0, 8);
-    sel.appendChild(o);
+  if (launched) {
+    if (![...sel.options].some((o) => o.value === launched)) {
+      const o = document.createElement("option");
+      o.value = launched; o.textContent = "Launched patient  ·  " + launched.slice(0, 8);
+      sel.appendChild(o);
+    }
+    sel.value = launched;
+    openChart();          // openChart() itself now (re)loads the chart documents.
+  } else {
+    // No SMART launch: the dropdown auto-selects its first patient, but <select
+    // onchange> doesn't fire on that initial population — load their docs now so
+    // the picker reflects the selected patient instead of the empty state.
+    loadChartDocuments();
   }
-  sel.value = launched;
-  loadChartDocuments();
-  openChart();
 }
 init();
 </script>
