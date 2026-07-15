@@ -124,10 +124,24 @@
   .doclist .dmeta { color: var(--muted); font-size: 12px; text-transform: capitalize; }
   .doclist .dactions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
   .doclist .dactions select { min-width: 128px; padding: 6px 8px; }
-  .doclist .readbtn { padding: 7px 13px; font-size: 12px; }
   .docempty { color: var(--muted); font-size: 13px; padding: 12px 2px; line-height: 1.5; }
   .hint { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
   .hint.err { color: var(--refuse-ink); }
+
+  /* per-document auto-read state: spinner → ✓ Read · N values → error */
+  .doclist .dstatus { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .dstatus .stwrap { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+  .dstatus .st-reading { color: var(--muted); }
+  .dstatus .st-read { color: #1f6b3a; font-weight: 700; }
+  .dstatus .st-err { color: var(--refuse-ink); font-weight: 700; cursor: help; }
+  .dstatus select { min-width: 112px; padding: 5px 7px; font-size: 12px; }
+  .spinner { width: 13px; height: 13px; border: 2px solid var(--line); border-top-color: var(--accent);
+             border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .rereadbtn { background: #fff; color: var(--accent-ink); border: 1px solid var(--line); border-radius: 6px;
+               padding: 5px 11px; font: inherit; font-size: 11px; text-transform: uppercase; letter-spacing: .3px; cursor: pointer; }
+  .rereadbtn:hover:not(:disabled) { background: var(--chip-bg); }
+  .rereadbtn:disabled { opacity: .5; cursor: default; }
 
   /* confidence indicator */
   .conf { margin: 12px 0 2px; }
@@ -536,8 +550,18 @@ async function ask() {
 // ===========================================================================
 const docTitleById = new Map(); // doc_id -> title, for the preview caption only.
 
-// The chart document the doctor just read — grounds the "Ask with sources" box
-// so /ask extracts it and returns record_facts. {document_id, doc_type} | null.
+// Per-document auto-read state. On chart load EVERY document is read
+// automatically (concurrently, cache-first) — the doctor never clicks "Read".
+// docState: doc_id -> { doc, docType, status, result, valueCount, error, li, statusEl, sel, reread }
+//   status ∈ "idle" | "reading" | "read" | "error"
+// The extracted-values panel shows exactly ONE document — the selected one.
+const docState = new Map();
+let docOrder = [];          // doc_ids in list order (for deterministic auto-select).
+let selectedDocId = null;   // which doc's values fill the panel right now.
+let userSelected = false;   // once the doctor clicks a row, stop auto-selecting.
+
+// The chart document currently shown/selected — grounds the "Ask with sources"
+// box so /ask extracts it and returns record_facts. {document_id, doc_type} | null.
 let currentDoc = null;
 
 // Best-effort doc_type inference from the title/category; null when ambiguous,
@@ -553,6 +577,7 @@ async function loadChartDocuments() {
   const pid = $("patient").value;
   const hint = $("docHint"), list = $("docList");
   docTitleById.clear();
+  docState.clear(); docOrder = []; selectedDocId = null; userSelected = false;
   currentDoc = null; updateGrounding(null);
   list.innerHTML = ""; $("confWrap").innerHTML = ""; $("extracted").innerHTML = "";
   if (!pid) { hint.className = "hint"; hint.textContent = "Choose a patient above to see the documents on their chart."; return; }
@@ -574,10 +599,10 @@ function renderDocList(docs) {
     e.textContent = "No documents on this chart. Anything the front desk, nursing, or the patient portal uploads will appear here for you to review.";
     list.appendChild(e); return;
   }
-  hint.className = "hint"; hint.textContent = "Select a document to read and extract its values.";
   docs.forEach((d) => {
     docTitleById.set(d.doc_id, d.title);
-    const li = document.createElement("li");
+    docOrder.push(d.doc_id);
+    const li = document.createElement("li"); li.dataset.docId = d.doc_id;
 
     const info = document.createElement("div"); info.className = "dinfo";
     const t = document.createElement("div"); t.className = "dtitle"; t.textContent = d.title; info.appendChild(t);
@@ -585,33 +610,45 @@ function renderDocList(docs) {
     if (meta) { const m = document.createElement("div"); m.className = "dmeta"; m.textContent = meta; info.appendChild(m); }
     li.appendChild(info);
 
-    const actions = document.createElement("div"); actions.className = "dactions";
+    // Right-side cluster: live auto-read status · inferred doc type (override
+    // for Re-read) · a cheap Re-read affordance (cache-first on the backend).
+    const cluster = document.createElement("div"); cluster.className = "dstatus";
+    const statusEl = document.createElement("span"); statusEl.className = "stwrap"; cluster.appendChild(statusEl);
+
     const sel = document.createElement("select"); sel.setAttribute("aria-label", "Document type");
     [["lab_pdf", "Lab PDF"], ["intake_form", "Intake form"]].forEach(([v, txt]) => {
       const o = document.createElement("option"); o.value = v; o.textContent = txt; sel.appendChild(o);
     });
     sel.value = inferDocType(d) || "lab_pdf";
     sel.onclick = (e) => e.stopPropagation();
-    actions.appendChild(sel);
+    cluster.appendChild(sel);
 
-    const btn = document.createElement("button"); btn.className = "readbtn"; btn.textContent = "Read";
-    btn.onclick = (e) => { e.stopPropagation(); ingestDoc(d, sel.value, li); };
-    actions.appendChild(btn);
-    li.appendChild(actions);
+    const reread = document.createElement("button"); reread.className = "rereadbtn"; reread.textContent = "Re-read";
+    reread.onclick = (e) => { e.stopPropagation(); autoReadDoc(d, true); };
+    cluster.appendChild(reread);
+    li.appendChild(cluster);
 
-    li.onclick = () => ingestDoc(d, sel.value, li);
+    // Clicking the row selects it — showing ITS values in the panel (instant,
+    // cached once read). Auto-read runs regardless of any click.
+    li.onclick = () => selectDoc(d.doc_id, true);
     list.appendChild(li);
+
+    docState.set(d.doc_id, { doc: d, docType: sel.value, status: "idle", result: null, valueCount: 0, error: null, li, statusEl, sel, reread });
+    autoReadDoc(d, false); // fire-and-forget; runs concurrently with the others.
   });
+  updateDocHint();
 }
 
-async function ingestDoc(doc, docType, li) {
+// Read one document automatically (or on Re-read). isUser=true means the doctor
+// asked for it explicitly, so we also focus the panel on it when done.
+async function autoReadDoc(doc, isUser) {
   const pid = $("patient").value;
-  const hint = $("docHint");
-  if (!pid) { hint.className = "hint err"; hint.textContent = "Select a patient above first."; return; }
-  [...$("docList").querySelectorAll("li")].forEach((n) => n.classList.remove("active"));
-  if (li) li.classList.add("active");
-  hint.className = "hint"; hint.innerHTML = '<span class="thinking">Reading “' + escapeHtml(doc.title) + '” with the vision model…</span>';
-  $("confWrap").innerHTML = ""; $("extracted").innerHTML = "";
+  const st = docState.get(doc.doc_id);
+  if (!st || !pid) return;
+  const docType = st.sel.value; st.docType = docType;
+  st.status = "reading"; st.error = null;
+  setRowStatus(st); updateDocHint();
+  if (selectedDocId === doc.doc_id) renderSelected();
   try {
     const url = `/patients/${encodeURIComponent(pid)}/chart-documents/${encodeURIComponent(doc.doc_id)}` +
       `/ingest?doc_type=${encodeURIComponent(docType)}`;
@@ -621,15 +658,111 @@ async function ingestDoc(doc, docType, li) {
       throw new Error(detail.detail || `HTTP ${resp.status}`);
     }
     const result = await resp.json();
-    hint.className = "hint"; hint.textContent = `Read “${doc.title}”. Click any value below to highlight its source.`;
-    confIndicator(result.confidence);
-    renderExtracted(result.extracted);
-    // Ground the "Ask with sources" box on this just-read document so /ask
-    // extracts it and returns the patient's own record_facts.
-    currentDoc = { document_id: doc.doc_id, doc_type: docType };
-    updateGrounding(doc.title);
+    st.result = result; st.status = "read"; st.valueCount = countValues(result.extracted);
+    setRowStatus(st);
+    if (isUser) selectDoc(doc.doc_id, true);
+    else maybeAutoSelect();
+    if (selectedDocId === doc.doc_id) renderSelected();
   } catch (e) {
-    hint.className = "hint err"; hint.textContent = "Read failed: " + e.message;
+    st.status = "error"; st.error = e.message; setRowStatus(st);
+    if (!isUser) maybeAutoSelect();
+    if (selectedDocId === doc.doc_id) renderSelected();
+  }
+  updateDocHint();
+}
+
+// Paint one row's status pill (spinner → ✓ Read · N values → failed).
+function setRowStatus(st) {
+  const el = st.statusEl;
+  if (st.status === "reading") {
+    el.innerHTML = '<span class="spinner"></span><span class="st-reading">Reading…</span>';
+    st.reread.disabled = true;
+  } else if (st.status === "read") {
+    const n = st.valueCount;
+    el.innerHTML = '<span class="st-read">✓ Read · ' + n + ' value' + (n === 1 ? "" : "s") + "</span>";
+    st.reread.disabled = false;
+  } else if (st.status === "error") {
+    el.innerHTML = '<span class="st-err" title="' + escapeHtml(st.error || "") + '">✕ Read failed</span>';
+    st.reread.disabled = false;
+  } else {
+    el.innerHTML = "";
+    st.reread.disabled = true;
+  }
+}
+
+// Count the extracted values for the "· N values" badge.
+function countValues(ex) {
+  if (!ex) return 0;
+  if (Array.isArray(ex.observations)) return ex.observations.length;
+  if (ex.demographics) {
+    let n = 1; // demographics
+    if (ex.chief_concern) n++;
+    ["current_medications", "allergies", "family_history"].forEach((k) => { if (ex[k]) n++; });
+    return n;
+  }
+  return 0;
+}
+
+// Deterministic auto-select: once the FIRST document in list order resolves,
+// show the earliest successfully-read document's values. Stops as soon as the
+// doctor clicks a row themselves.
+function maybeAutoSelect() {
+  if (userSelected) return;
+  const firstSt = docState.get(docOrder[0]);
+  if (!firstSt || firstSt.status === "idle" || firstSt.status === "reading") return; // wait for #1
+  const firstRead = docOrder.find((id) => docState.get(id) && docState.get(id).status === "read");
+  if (firstRead && selectedDocId !== firstRead) selectDoc(firstRead, false);
+}
+
+// Select a document: mark its row active and fill the panel with ITS values.
+function selectDoc(docId, isUser) {
+  if (isUser) userSelected = true;
+  selectedDocId = docId;
+  [...$("docList").querySelectorAll("li")].forEach((li) => li.classList.toggle("active", li.dataset.docId === docId));
+  renderSelected();
+}
+
+// Render the currently-selected document into the confidence + values panel,
+// and (re)ground the Ask box on it. One document at a time.
+function renderSelected() {
+  const cw = $("confWrap"), ex = $("extracted");
+  cw.innerHTML = ""; ex.innerHTML = "";
+  currentDoc = null; updateGrounding(null);
+  const st = docState.get(selectedDocId);
+  if (!st) return;
+  if (st.status === "reading" || st.status === "idle") {
+    ex.innerHTML = '<div class="hint"><span class="thinking">Reading “' + escapeHtml(st.doc.title) + '”…</span></div>';
+    return;
+  }
+  if (st.status === "error") {
+    ex.innerHTML = '<div class="hint err">Could not read “' + escapeHtml(st.doc.title) + '”: ' + escapeHtml(st.error || "") + "</div>";
+    return;
+  }
+  confIndicator(st.result.confidence);
+  renderExtracted(st.result.extracted);
+  // Ground the "Ask with sources" box on the shown document.
+  currentDoc = { document_id: st.doc.doc_id, doc_type: st.docType };
+  updateGrounding(st.doc.title);
+}
+
+// Top-of-list instruction reflecting overall auto-read progress.
+function updateDocHint() {
+  const hint = $("docHint");
+  const states = [...docState.values()];
+  if (!states.length) return;
+  const pending = states.some((s) => s.status === "idle" || s.status === "reading");
+  if (pending) {
+    hint.className = "hint";
+    hint.innerHTML = '<span class="thinking">Reading every document on this chart automatically…</span>';
+    return;
+  }
+  const ok = states.filter((s) => s.status === "read").length;
+  if (ok) {
+    hint.className = "hint";
+    hint.textContent = "All documents read automatically. Select a document to see its values; click any value to view its exact source.";
+  } else {
+    hint.className = "hint err";
+    hint.textContent = "Could not read the documents on this chart.";
   }
 }
 
