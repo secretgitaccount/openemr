@@ -1,0 +1,1536 @@
+{
+  "components": {
+    "schemas": {
+      "AskRequest": {
+        "additionalProperties": false,
+        "description": "The Week-2 ``/ask`` request body.\n\n``attachments`` are documents to extract before answering (may be empty); the\nsupervisor only routes to extraction when at least one is present. Frozen +\n``extra=\"forbid\"`` so a malformed body is a 422, not a silent drop.",
+        "properties": {
+          "attachments": {
+            "description": "Documents to extract before answering (may be empty).",
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
+          "question": {
+            "description": "The clinical question to answer.",
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "AskRequest",
+        "type": "object"
+      },
+      "Attachment": {
+        "additionalProperties": false,
+        "description": "A document attached to / referenced by the question, awaiting extraction.\n\nA document is named **exactly one** of two ways and ``doc_type`` selects the\nextraction path (``lab_pdf`` / ``intake_form``):\n\n* ``file_path`` \u2014 a source document the doctor uploaded through our tool\n  (the PRP-06 ``attach_and_extract`` upload path); or\n* ``document_id`` \u2014 the stable OpenEMR id of a document **already in the\n  chart** (the PRP-15 chart-read path), so ``/ask`` can ground against the\n  very document the doctor is reading and reuse that read's extraction\n  (PRP-17) instead of re-uploading or re-running the VLM.\n\nExactly one of the two must be set (enforced by :meth:`_exactly_one_source`).\nFrozen + ``extra=\"forbid\"`` like every other contract in the codebase.",
+        "properties": {
+          "doc_type": {
+            "description": "PRP-06 doc type, e.g. 'lab_pdf' / 'intake_form'.",
+            "title": "Doc Type",
+            "type": "string"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stable OpenEMR id of a chart document to extract (chart-read path).",
+            "title": "Document Id"
+          },
+          "file_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Path to an uploaded source document to extract (upload path).",
+            "title": "File Path"
+          }
+        },
+        "required": [
+          "doc_type"
+        ],
+        "title": "Attachment",
+        "type": "object"
+      },
+      "Body_ingest_document_endpoint_patients__patient_id__documents_post": {
+        "properties": {
+          "doc_type": {
+            "description": "One of: lab_pdf, intake_form.",
+            "title": "Doc Type",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "The source document (lab PDF / intake form).",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "doc_type"
+        ],
+        "title": "Body_ingest_document_endpoint_patients__patient_id__documents_post",
+        "type": "object"
+      },
+      "Body_preview_page_preview_page_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "The source document to preview (PDF or image).",
+            "title": "File",
+            "type": "string"
+          },
+          "page": {
+            "default": 1,
+            "description": "1-indexed page to render.",
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_preview_page_preview_page_post",
+        "type": "object"
+      },
+      "ChartDocument": {
+        "additionalProperties": false,
+        "description": "One document already in a patient's chart (a FHIR ``DocumentReference``).\n\n``doc_id`` is the stable OpenEMR id taken from the ``Binary/<id>`` attachment\nURL \u2014 the id :func:`fetch_document_bytes` / :func:`ingest_chart_document`\nkey on and the id every extracted citation is grounded to. Frozen +\n``extra=\"forbid\"`` like every other contract in the codebase.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Document category, if classified.",
+            "title": "Category"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Document date (FHIR date string), if known.",
+            "title": "Date"
+          },
+          "doc_id": {
+            "description": "Stable OpenEMR document (Binary) id.",
+            "minLength": 1,
+            "title": "Doc Id",
+            "type": "string"
+          },
+          "mimetype": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Attachment content type, if known.",
+            "title": "Mimetype"
+          },
+          "title": {
+            "description": "Human-readable document title.",
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "doc_id",
+          "title"
+        ],
+        "title": "ChartDocument",
+        "type": "object"
+      },
+      "Claim": {
+        "additionalProperties": false,
+        "description": "A single statement plus the source records that ground it (FR-8).\n\nAn empty `sources` list is allowed by construction but means the claim is\nungrounded: `is_grounded` is False and downstream verification (M1-6) drops\nit rather than surfacing an unsupported fact.",
+        "properties": {
+          "sources": {
+            "description": "Source records grounding the claim; empty means ungrounded.",
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "text": {
+            "description": "The claim's natural-language text.",
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "Claim",
+        "type": "object"
+      },
+      "DependencyStatus": {
+        "additionalProperties": false,
+        "description": "Outcome of a single dependency probe.\n\n``status`` is one of ``ok`` | ``unreachable`` | ``not_configured`` |\n``degraded`` | ``skipped``. ``required`` marks whether this dependency\ngates overall readiness \u2014 a required dependency in any status other than\n``ok`` forces ``/ready`` to ``503``.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Human-readable probe detail.",
+            "title": "Detail"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Probe round-trip, if applicable.",
+            "title": "Latency Ms"
+          },
+          "required": {
+            "default": false,
+            "description": "Whether this gates readiness.",
+            "title": "Required",
+            "type": "boolean"
+          },
+          "status": {
+            "description": "ok | unreachable | not_configured | degraded | skipped",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "DependencyStatus",
+        "type": "object"
+      },
+      "FollowupRequest": {
+        "additionalProperties": false,
+        "description": "The body of a follow-up message: just the question to answer.",
+        "properties": {
+          "question": {
+            "description": "The follow-up question to answer.",
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "FollowupRequest",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Handoff": {
+        "additionalProperties": false,
+        "description": "One inspectable routing decision made by the supervisor.\n\nRecords where control passed *from* and *to* (``to_node == \"done\"`` marks\ntermination), the human-readable ``reason`` the supervisor chose that route,\nand ``at`` (when the decision was made). Frozen so a logged handoff can never\nbe rewritten after the fact.",
+        "properties": {
+          "at": {
+            "description": "When the decision was made (UTC).",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "from_node": {
+            "description": "Node that made the routing decision.",
+            "title": "From Node",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Human-readable justification for the route.",
+            "title": "Reason",
+            "type": "string"
+          },
+          "to_node": {
+            "description": "Node control passed to ('done' = terminate).",
+            "title": "To Node",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_node",
+          "to_node",
+          "reason",
+          "at"
+        ],
+        "title": "Handoff",
+        "type": "object"
+      },
+      "HealthStatus": {
+        "additionalProperties": false,
+        "description": "Liveness payload \u2014 intentionally trivial.",
+        "properties": {
+          "status": {
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "HealthStatus",
+        "type": "object"
+      },
+      "PagePreview": {
+        "additionalProperties": false,
+        "description": "One rendered document page + the geometry the UI needs to place boxes.\n\n``width_pt`` / ``height_pt`` are the PDF point dimensions the citation\n``bbox=`` locator lives in (``None`` for an image-only document, which has no\ntext-layer coordinate space). ``image_data_uri`` is a self-contained\n``data:image/png;base64,...`` string so the page never requests an external\nhost. Frozen + ``extra=\"forbid\"`` like every other contract in the codebase.",
+        "properties": {
+          "height_pt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PDF page height in points (the bbox coordinate space); null for images.",
+            "title": "Height Pt"
+          },
+          "height_px": {
+            "description": "Rendered raster height in pixels.",
+            "title": "Height Px",
+            "type": "integer"
+          },
+          "image_data_uri": {
+            "description": "Self-contained data:image/png;base64 of the page.",
+            "title": "Image Data Uri",
+            "type": "string"
+          },
+          "is_image": {
+            "description": "True for an image-only doc (no text layer) \u2014 UI uses a page-level highlight.",
+            "title": "Is Image",
+            "type": "boolean"
+          },
+          "page": {
+            "description": "1-indexed page rendered (clamped into range).",
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_count": {
+            "description": "Total pages in the document.",
+            "title": "Page Count",
+            "type": "integer"
+          },
+          "width_pt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PDF page width in points (the bbox coordinate space); null for images.",
+            "title": "Width Pt"
+          },
+          "width_px": {
+            "description": "Rendered raster width in pixels.",
+            "title": "Width Px",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page",
+          "page_count",
+          "is_image",
+          "width_px",
+          "height_px",
+          "image_data_uri"
+        ],
+        "title": "PagePreview",
+        "type": "object"
+      },
+      "PrewarmReport": {
+        "additionalProperties": false,
+        "description": "Outcome of one :func:`prewarm_schedule` run (counts and timings only).\n\nCarries no clinical values \u2014 safe to log and trace. ``failed`` names the\npatient ids whose retrieval could not be warmed (recorded, never fatal).",
+        "properties": {
+          "elapsed_s": {
+            "default": 0.0,
+            "description": "Wall-clock duration of the prewarm run, in seconds.",
+            "minimum": 0.0,
+            "title": "Elapsed S",
+            "type": "number"
+          },
+          "failed": {
+            "description": "Patient ids whose retrieval failed (recorded, not fatal).",
+            "items": {
+              "type": "string"
+            },
+            "title": "Failed",
+            "type": "array"
+          },
+          "scheduled": {
+            "default": 0,
+            "description": "Number of patients on today's schedule.",
+            "minimum": 0.0,
+            "title": "Scheduled",
+            "type": "integer"
+          },
+          "warmed": {
+            "default": 0,
+            "description": "Number of patients whose critical set was warmed into the cache.",
+            "minimum": 0.0,
+            "title": "Warmed",
+            "type": "integer"
+          }
+        },
+        "title": "PrewarmReport",
+        "type": "object"
+      },
+      "ReadinessReport": {
+        "additionalProperties": false,
+        "description": "Aggregate readiness across all dependencies.\n\n``status`` is three-valued, not binary: ``ready`` (all good), ``degraded``\n(serving, but a non-gating dependency is down \u2014 see ``degraded``), or\n``not_ready`` (a required dependency is down \u2192 HTTP 503).",
+        "properties": {
+          "checks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DependencyStatus"
+            },
+            "title": "Checks",
+            "type": "object"
+          },
+          "degraded": {
+            "description": "Names of down (non-gating) dependencies; empty when fully ready.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Degraded",
+            "type": "array"
+          },
+          "status": {
+            "description": "ready | degraded | not_ready",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checks"
+        ],
+        "title": "ReadinessReport",
+        "type": "object"
+      },
+      "SourceCitation": {
+        "additionalProperties": false,
+        "description": "A machine-readable pointer to the exact evidence for a fact (FR-6).\n\nEvery extracted clinical fact carries one of these so grounding is enforced\nby output *shape*, not by prompting: it names the document, the page or\nsection within it, the specific field or retrieval chunk, and the verbatim\nquote (or value) the fact was read from. `page_or_section` and\n`field_or_chunk_id` are locator hints that depend on the source kind (a PDF\npage vs. a form field vs. a RAG chunk id); at least one is typically set.",
+        "properties": {
+          "field_or_chunk_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Intake-form field name or RAG chunk id the fact came from, if applicable.",
+            "title": "Field Or Chunk Id"
+          },
+          "page_or_section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PDF page or guideline section the fact came from, if applicable.",
+            "title": "Page Or Section"
+          },
+          "quote_or_value": {
+            "description": "Verbatim quote or value read from the source (the grounding evidence).",
+            "minLength": 1,
+            "title": "Quote Or Value",
+            "type": "string"
+          },
+          "source_id": {
+            "description": "Stable id of the source document / record, e.g. a filename or FHIR id.",
+            "minLength": 1,
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_type": {
+            "description": "Kind of source the fact was grounded in.",
+            "enum": [
+              "lab_pdf",
+              "intake_form",
+              "guideline",
+              "fhir"
+            ],
+            "title": "Source Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_type",
+          "source_id",
+          "quote_or_value"
+        ],
+        "title": "SourceCitation",
+        "type": "object"
+      },
+      "SourceRef": {
+        "additionalProperties": false,
+        "description": "A pointer to a source record that grounds a clinical claim (FR-8).\n\nEvery clinical statement the agent surfaces must carry one of these so\ngrounding is enforced by output *shape*, not by prompting. It names the\nFHIR resource type, the record id, and (when known) the record's clinical\ntimestamp.",
+        "properties": {
+          "id": {
+            "description": "Record id within that resource type.",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "resource_type": {
+            "description": "FHIR resource type, e.g. 'Observation'.",
+            "minLength": 1,
+            "title": "Resource Type",
+            "type": "string"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Clinical timestamp of the record, if known.",
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "resource_type",
+          "id"
+        ],
+        "title": "SourceRef",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "W2Answer": {
+        "additionalProperties": false,
+        "description": "The final grounded answer for one Week-2 question (PRP-10, FR-6).\n\n``record_facts`` (from the patient's documents / OpenEMR records) and\n``guideline_evidence`` (from the RAG corpus) are deliberately distinct\nfields, never merged, so a reader can always separate chart facts from public\nguidance. Every claim in ``answer_claims`` survived the Week-1 verification\ngate, so it carries at least one citation that resolves to one of those two\nevidence lists. ``handoffs`` is the inspectable PRP-09 routing log. Frozen +\n``extra=\"forbid\"`` like every other contract in the codebase.",
+        "properties": {
+          "answer_claims": {
+            "description": "Grounded claims (each carries >=1 citation; ungrounded ones were dropped).",
+            "items": {
+              "$ref": "#/components/schemas/Claim"
+            },
+            "title": "Answer Claims",
+            "type": "array"
+          },
+          "caveats": {
+            "description": "Plain-language limitations / hedges (not grounded claims).",
+            "items": {
+              "type": "string"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "guideline_evidence": {
+            "description": "Guideline-corpus citations from RAG; separate from record facts.",
+            "items": {
+              "$ref": "#/components/schemas/SourceCitation"
+            },
+            "title": "Guideline Evidence",
+            "type": "array"
+          },
+          "handoffs": {
+            "description": "The inspectable PRP-09 supervisor routing log for this run.",
+            "items": {
+              "$ref": "#/components/schemas/Handoff"
+            },
+            "title": "Handoffs",
+            "type": "array"
+          },
+          "headline": {
+            "description": "One-line answer headline.",
+            "minLength": 1,
+            "title": "Headline",
+            "type": "string"
+          },
+          "record_facts": {
+            "description": "Patient-record citations (documents / OpenEMR); separate from guidelines.",
+            "items": {
+              "$ref": "#/components/schemas/SourceCitation"
+            },
+            "title": "Record Facts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "headline"
+        ],
+        "title": "W2Answer",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Conversational clinical co-pilot for OpenEMR \u2014 grounded, cited point-of-care synthesis over the OAuth2/SMART-FHIR API.",
+    "title": "Clinical Co-Pilot",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/conversations/{conversation_id}/messages": {
+      "post": {
+        "description": "Answer a follow-up over a started conversation and stream the cited answer.\n\nThe pinned patient is resolved from the conversation (never from the\nquestion), the answer is grounded against the retained records, and each cited\nclaim is streamed as NDJSON. An unknown or expired conversation returns\n``404`` rather than starting a fresh, unpinned chat.",
+        "operationId": "followup_endpoint_conversations__conversation_id__messages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Acting provider (dev seam; defaults to admin).",
+            "in": "header",
+            "name": "X-Provider-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Acting provider (dev seam; defaults to admin).",
+              "title": "X-Provider-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FollowupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Followup Endpoint",
+        "tags": [
+          "conversation"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Liveness: 200 whenever the process is alive. No dependency I/O.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/launch": {
+      "get": {
+        "description": "Begin the EHR launch: pin the issuer, then redirect to ``/authorize``.",
+        "operationId": "launch_launch_get",
+        "parameters": [
+          {
+            "description": "FHIR issuer (OpenEMR) initiating the launch",
+            "in": "query",
+            "name": "iss",
+            "required": true,
+            "schema": {
+              "description": "FHIR issuer (OpenEMR) initiating the launch",
+              "title": "Iss",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opaque SMART launch context token",
+            "in": "query",
+            "name": "launch",
+            "required": true,
+            "schema": {
+              "description": "Opaque SMART launch context token",
+              "title": "Launch",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Intended audience (FHIR base)",
+            "in": "query",
+            "name": "aud",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Intended audience (FHIR base)",
+              "title": "Aud"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Launch",
+        "tags": [
+          "smart-launch"
+        ]
+      }
+    },
+    "/launch/callback": {
+      "get": {
+        "description": "Finish the handshake: exchange the code, open a session, open the patient.",
+        "operationId": "launch_callback_launch_callback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Launch Callback",
+        "tags": [
+          "smart-launch"
+        ]
+      }
+    },
+    "/patients": {
+      "get": {
+        "description": "List patients (``id`` + display name) as the acting clinician (FR-3).\n\nA thin ``GET /Patient?_count=`` read so the UI picker can populate. Returns\nonly the id and a display name \u2014 no clinical values.",
+        "operationId": "list_patients_patients_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "title": "Response List Patients Patients Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Patients",
+        "tags": [
+          "ui"
+        ]
+      }
+    },
+    "/patients/{patient_id}/ask": {
+      "post": {
+        "description": "Answer one grounded question about a patient and return the verified answer.\n\nRuns the PRP-09 graph (off the event loop) then assembles the\n:class:`W2Answer`: record facts and guideline evidence kept as distinct\nfields, every surfaced claim verified/grounded (ungrounded ones dropped), and\nthe routing handoff log returned so the whole run is replayable.",
+        "operationId": "ask_endpoint_patients__patient_id__ask_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_id",
+            "required": true,
+            "schema": {
+              "title": "Patient Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/W2Answer"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ask Endpoint",
+        "tags": [
+          "w2flow"
+        ]
+      }
+    },
+    "/patients/{patient_id}/chart-documents": {
+      "get": {
+        "description": "List the documents already in the patient's chart (front-desk / nurse / portal).",
+        "operationId": "list_chart_documents_endpoint_patients__patient_id__chart_documents_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_id",
+            "required": true,
+            "schema": {
+              "title": "Patient Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChartDocument"
+                  },
+                  "title": "Response List Chart Documents Endpoint Patients  Patient Id  Chart Documents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Chart Documents Endpoint",
+        "tags": [
+          "chart-documents"
+        ]
+      }
+    },
+    "/patients/{patient_id}/chart-documents/{doc_id}/ingest": {
+      "post": {
+        "description": "Ingest a document already in the chart and return the cited result.\n\nRejects an unknown ``doc_type`` with 422 (before any work). On success\nreturns the :class:`IngestResult` JSON: the existing-document source ref, the\nvalidated extracted facts with per-value citations grounded to ``doc_id``,\nthe persisted record refs, and the extraction confidence.",
+        "operationId": "ingest_chart_document_endpoint_patients__patient_id__chart_documents__doc_id__ingest_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_id",
+            "required": true,
+            "schema": {
+              "title": "Patient Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "title": "Doc Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "One of: lab_pdf, intake_form.",
+            "in": "query",
+            "name": "doc_type",
+            "required": true,
+            "schema": {
+              "description": "One of: lab_pdf, intake_form.",
+              "title": "Doc Type",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingest Chart Document Endpoint",
+        "tags": [
+          "chart-documents"
+        ]
+      }
+    },
+    "/patients/{patient_id}/chart-documents/{doc_id}/page/{n}": {
+      "get": {
+        "description": "Render one page of a chart document to a PNG data-URI + dims for the overlay.\n\nFetches the document's bytes from OpenEMR and rasterizes page ``n`` with the\nsame renderer the upload preview uses (PRP-13), so the UI scales a citation's\n``bbox=`` locator onto the displayed page. An out-of-range page is clamped;\nan unrenderable document is a 422.",
+        "operationId": "chart_document_page_endpoint_patients__patient_id__chart_documents__doc_id__page__n__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_id",
+            "required": true,
+            "schema": {
+              "title": "Patient Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "title": "Doc Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "n",
+            "required": true,
+            "schema": {
+              "title": "N",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagePreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Chart Document Page Endpoint",
+        "tags": [
+          "chart-documents"
+        ]
+      }
+    },
+    "/patients/{patient_id}/conversation": {
+      "post": {
+        "description": "Start a chart conversation and stream the cited summary + ``conversation_id``.\n\nRuns the role \u2192 panel \u2192 retrieve \u2192 summary lifecycle; a granted request pins\nthe patient and returns the id for follow-ups, a refused one streams a single\nrefusal event and pins nothing.",
+        "operationId": "start_conversation_endpoint_patients__patient_id__conversation_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_id",
+            "required": true,
+            "schema": {
+              "title": "Patient Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Analyse the full lab history instead of the recent+abnormal slice (slower, costlier).",
+            "in": "query",
+            "name": "full_labs",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Analyse the full lab history instead of the recent+abnormal slice (slower, costlier).",
+              "title": "Full Labs",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Force a fresh Claude generation, ignoring (and refreshing) the cached summary.",
+            "in": "query",
+            "name": "regenerate",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Force a fresh Claude generation, ignoring (and refreshing) the cached summary.",
+              "title": "Regenerate",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Break-glass justification. Locally, Synthea patients have no schedule, so this is how the granted path is reached; logged as an override. Leave blank for the normal gated path.",
+            "in": "header",
+            "name": "X-Break-Glass-Reason",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Break-glass justification. Locally, Synthea patients have no schedule, so this is how the granted path is reached; logged as an override. Leave blank for the normal gated path.",
+              "title": "X-Break-Glass-Reason"
+            }
+          },
+          {
+            "description": "Acting provider (dev seam; defaults to admin).",
+            "in": "header",
+            "name": "X-Provider-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Acting provider (dev seam; defaults to admin).",
+              "title": "X-Provider-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Conversation Endpoint",
+        "tags": [
+          "conversation"
+        ]
+      }
+    },
+    "/patients/{patient_id}/documents": {
+      "post": {
+        "description": "Ingest one uploaded clinical document and return the cited result.\n\nRejects an unknown ``doc_type`` with 422 (before any work). On success\nreturns the :class:`IngestResult` JSON: the stored source ref, the validated\nextracted facts with per-value citations, the persisted record refs, and the\nextraction confidence.",
+        "operationId": "ingest_document_endpoint_patients__patient_id__documents_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_id",
+            "required": true,
+            "schema": {
+              "title": "Patient Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_ingest_document_endpoint_patients__patient_id__documents_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingest Document Endpoint",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/patients/{patient_id}/summary": {
+      "post": {
+        "description": "Stream a grounded, cited \"what changed + must-knows\" summary (M1 acceptance).\n\nRuns the gate-first lifecycle and streams the finalized pieces as NDJSON. An\nout-of-panel patient yields a single refusal event (the refusal is logged by\nthe gate); a paneled patient yields the cited summary, safety flags, \"couldn't\nretrieve X\" notices, and a \"data as of <ts>\" line.",
+        "operationId": "patient_summary_endpoint_patients__patient_id__summary_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_id",
+            "required": true,
+            "schema": {
+              "title": "Patient Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Break-glass justification. Locally, Synthea patients have no schedule, so this is how the granted (in-panel) path is reached; the override is logged. Leave blank for the normal gated path.",
+            "in": "header",
+            "name": "X-Break-Glass-Reason",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Break-glass justification. Locally, Synthea patients have no schedule, so this is how the granted (in-panel) path is reached; the override is logged. Leave blank for the normal gated path.",
+              "title": "X-Break-Glass-Reason"
+            }
+          },
+          {
+            "description": "Acting provider (dev seam; defaults to admin).",
+            "in": "header",
+            "name": "X-Provider-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Acting provider (dev seam; defaults to admin).",
+              "title": "X-Provider-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patient Summary Endpoint",
+        "tags": [
+          "summary"
+        ]
+      }
+    },
+    "/preview/page": {
+      "post": {
+        "description": "Render one document page to a PNG for the click-to-source overlay.\n\nReads the uploaded bytes in memory (nothing persisted), rasterizes the\nrequested page, and returns the image plus its pixel and PDF-point\ndimensions so the UI can scale a citation's ``bbox=`` locator onto the\ndisplayed page. An unsupported file type is a 422; an out-of-range page is\nclamped into the document rather than erroring.",
+        "operationId": "preview_page_preview_page_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_preview_page_preview_page_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagePreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Page",
+        "tags": [
+          "preview"
+        ]
+      }
+    },
+    "/prewarm": {
+      "post": {
+        "description": "Warm today's scheduled charts into the shared cache and return the report.\n\nRuns :func:`prewarm_schedule` for the acting provider against the same\nprocess-wide cache the chart/conversation endpoints read through, so warmed\ncharts open warm. Data-only and never fatal (per-patient failures are recorded\nin the returned :class:`PrewarmReport`, not raised).",
+        "operationId": "prewarm_endpoint_prewarm_post",
+        "parameters": [
+          {
+            "description": "Provider whose schedule to prewarm (dev seam; defaults to admin).",
+            "in": "header",
+            "name": "X-Provider-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Provider whose schedule to prewarm (dev seam; defaults to admin).",
+              "title": "X-Provider-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrewarmReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Prewarm Endpoint",
+        "tags": [
+          "prewarm"
+        ]
+      }
+    },
+    "/ready": {
+      "get": {
+        "description": "Readiness: probe every dependency and return a three-valued status.\n\n``503 not_ready`` if any **required** dependency is down; otherwise ``200``\nwith ``degraded`` (naming any down Week-2 dependency) or ``ready``. Never a\nbinary up/down \u2014 a still-serving agent with a down non-gating dependency is\nreported as degraded, not failed.",
+        "operationId": "ready_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessReport"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ready",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}

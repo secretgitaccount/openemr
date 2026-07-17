@@ -1,0 +1,41 @@
+# Clinical Co-Pilot — server-side CI gate (GitLab).
+#
+# Runs the SAME PR-blocking gate as the local .githooks/pre-push hook, plus a
+# coverage floor — so enforcement no longer depends on each clone installing the
+# hook. `make ci` = lint -> tests + coverage (>=80%) -> eval regression gate
+# (fail on >5% drop or below the 0.90 floor) -> fail-closed PHI scan.
+#
+# Scoped to changes under agent/ so pure-OpenEMR commits don't trigger it, but it
+# always runs on the default branch and on merge requests. During grading, an
+# injected regression makes this job go red — the "hard gate" the spec requires.
+
+stages:
+  - gate
+
+agent-ci:
+  stage: gate
+  image: python:3.13-slim
+  interruptible: true
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+  cache:
+    key: agent-pip
+    paths:
+      - .pip-cache
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq make >/dev/null
+    - cd agent
+    - python -m venv .venv
+    - .venv/bin/pip install --upgrade pip -q
+    - .venv/bin/pip install -r requirements.txt -q
+    - .venv/bin/pip install -e . -q
+    - cd ..
+  script:
+    - make ci
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - changes:
+        - agent/**/*
+        - Makefile
+        - .gitlab-ci.yml

@@ -29,6 +29,7 @@ python-dotenv>=1.0
 pytest>=8.3
 pytest-asyncio>=0.24
 pytest-httpx>=0.32     # mock OpenEMR in unit tests
+pytest-cov>=5.0        # coverage gate for `make coverage` / CI (--cov-fail-under)
 respx>=0.21
 ruff==0.15.21          # lint step of .githooks/pre-push + `make ci` (pinned for reproducible gate)
 

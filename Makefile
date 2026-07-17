@@ -1,8 +1,9 @@
 # Clinical Co-Pilot — CI gate (PRP-12, FR-8).
 #
-# `make ci` mirrors the .githooks/pre-push hook so pull requests are blocked by
-# the same four steps that block a local push: lint -> tests -> eval regression
-# gate -> fail-closed PHI scan. A GitLab/GitHub CI job simply calls `make ci`.
+# `make ci` runs the PR-blocking gate: lint -> tests+coverage -> eval regression
+# gate -> fail-closed PHI scan. It is a *superset* of the local .githooks/pre-push
+# hook (which runs the fast `pytest -q` without coverage) — CI additionally
+# enforces the coverage floor. The server-side job (.gitlab-ci.yml) calls `make ci`.
 #
 # Install the local push hook once:
 #   make install-hooks      # == git config core.hooksPath .githooks
@@ -10,22 +11,38 @@
 AGENT_DIR := agent
 PY        := $(AGENT_DIR)/.venv/bin/python
 RUFF      := $(AGENT_DIR)/.venv/bin/ruff
+COV_MIN   := 80
 
-.PHONY: ci lint test eval-gate phi-check install-hooks update-baseline
+.PHONY: ci lint test coverage eval-gate phi-check install-hooks update-baseline openapi openapi-check
 
-## Run the full PR-blocking gate (same order as .githooks/pre-push).
-ci: lint test eval-gate phi-check
+## Run the full PR-blocking gate. Superset of .githooks/pre-push (+ coverage floor).
+ci: lint coverage eval-gate phi-check
 	@echo "make ci: all gates green."
+
+## Regenerate the committed OpenAPI 3.1 snapshot (agent/openapi.json).
+openapi:
+	cd $(AGENT_DIR) && .venv/bin/python -m copilot.scripts.dump_openapi
+
+## Fail if the committed OpenAPI snapshot has drifted from the implementation.
+## (Also enforced in the test suite via tests/test_openapi_contract.py.)
+openapi-check:
+	cd $(AGENT_DIR) && .venv/bin/python -m copilot.scripts.dump_openapi --check
 
 ## 1. Lint.
 lint:
 	@echo "==> ci: ruff check"
 	cd $(AGENT_DIR) && .venv/bin/ruff check
 
-## 2. Full test suite (no key, no network).
+## 2. Full test suite (no key, no network) — fast, no coverage (mirrors the hook).
 test:
 	@echo "==> ci: pytest -q"
 	cd $(AGENT_DIR) && .venv/bin/python -m pytest -q
+
+## 2b. Full test suite + coverage floor (the CI test step).
+coverage:
+	@echo "==> ci: pytest + coverage (fail under $(COV_MIN)%)"
+	cd $(AGENT_DIR) && .venv/bin/python -m pytest -q \
+		--cov=copilot --cov-report=term-missing --cov-fail-under=$(COV_MIN)
 
 ## 3. Golden-set regression gate vs the committed baseline.
 eval-gate:
