@@ -21,6 +21,14 @@ where = ["src"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["src"]
+# `live` tests assert against a running local stack (OpenEMR at :8300, the
+# reranker model). They are deselected by default so the suite — and the
+# PR-blocking pre-push hook — is hermetic (green with no docker, no key). Run
+# them explicitly against the live dev stack with `pytest -m live`.
+markers = [
+    "live: requires a running local stack (OpenEMR/reranker); deselected by default",
+]
+addopts = "-m 'not live'"
 
 [tool.ruff]
 line-length = 100

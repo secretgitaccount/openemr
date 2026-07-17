@@ -37,6 +37,21 @@ def client() -> TestClient:
         yield c
 
 
+async def _ok(*_a: object, **_k: object) -> DependencyStatus:
+    """A generic 'this required dependency is up' probe stub.
+
+    Lets a degradation test force the two *required* deps (OpenEMR, Anthropic) ok
+    so the aggregate reflects the non-gating dependency under test — hermetic
+    regardless of whether a live stack or API key is present locally."""
+
+    return DependencyStatus(status="ok", required=True, detail="stubbed ok")
+
+
+def _force_required_deps_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(health, "_check_openemr", _ok)
+    monkeypatch.setattr(health, "_check_anthropic", _ok)
+
+
 # ---------------------------------------------------------------------------
 # /health — pure liveness
 # ---------------------------------------------------------------------------
@@ -108,6 +123,7 @@ def test_ready_langfuse_degrades_without_keys(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.live
 def test_ready_openemr_ok_when_reachable(client: TestClient) -> None:
     openemr = client.get("/ready").json()["checks"]["openemr"]
     assert openemr["status"] == "ok", (
@@ -169,6 +185,7 @@ def test_ready_names_failing_dependency_via_real_connect_error(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.live
 def test_ready_week2_deps_ok_when_reachable(client: TestClient) -> None:
     """With the local stack + Week-2 deps installed, all three report ok and
     are marked non-gating."""
@@ -190,6 +207,7 @@ def test_ready_degrades_when_reranker_down(monkeypatch: pytest.MonkeyPatch) -> N
             detail="simulated: reranker model not loadable",
         )
 
+    _force_required_deps_ok(monkeypatch)
     monkeypatch.setattr(health, "_check_reranker", _down)
 
     with TestClient(app) as c:
@@ -216,6 +234,7 @@ def test_ready_degraded_document_storage_does_not_503(
             detail="ConnectError: simulated Standard REST API outage",
         )
 
+    _force_required_deps_ok(monkeypatch)
     monkeypatch.setattr(health, "_check_document_storage", _unreachable)
 
     with TestClient(app) as c:
