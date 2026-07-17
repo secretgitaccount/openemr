@@ -3,7 +3,9 @@
 # `make ci` runs the PR-blocking gate: lint -> tests+coverage -> eval regression
 # gate -> fail-closed PHI scan. It is a *superset* of the local .githooks/pre-push
 # hook (which runs the fast `pytest -q` without coverage) — CI additionally
-# enforces the coverage floor. The server-side job (.gitlab-ci.yml) calls `make ci`.
+# enforces the coverage floor. Any server-side CI job (on a host that provides
+# runners) can call `make ci`; where no runner is available, the local pre-push
+# hook (`make install-hooks`) is the PR-blocking gate.
 #
 # Install the local push hook once:
 #   make install-hooks      # == git config core.hooksPath .githooks
