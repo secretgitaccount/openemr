@@ -198,6 +198,7 @@ def run_graph(
             "extracted": [],
             "evidence": [],
             "handoffs": [],
+            "worker_latencies": [],
             "done": False,
         }
 
@@ -230,6 +231,7 @@ def run_graph(
             extracted=list(final["extracted"]),
             evidence=list(final["evidence"]),
             handoffs=list(final["handoffs"]),
+            worker_latencies=list(final.get("worker_latencies", [])),
             done=final["done"],
             steps=len(final["handoffs"]),
         )

@@ -19,6 +19,7 @@ so worker spans nest under it (NFR-2).
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -28,7 +29,7 @@ from copilot.documents.ingest import attach_and_extract
 from copilot.observability import trace
 from copilot.rag.retrieve import retrieve_evidence
 
-from .state import GraphState, Handoff
+from .state import GraphState, Handoff, WorkerTiming
 
 __all__ = [
     "WorkerFn",
@@ -104,9 +105,14 @@ def _make_worker_node(
     a terminal ERROR :class:`Handoff` whose ``reason`` names only the exception
     **type** (never its message) and flips ``done`` so the supervisor terminates
     with the routing record intact.
+
+    Either way it appends a :class:`WorkerTiming` (monotonic wall-clock + success
+    flag) to the ``worker_latencies`` channel, so per-worker latency (FR-9) is
+    reconstructable from state alone even when the worker failed.
     """
 
     def node(state: GraphState) -> dict[str, Any]:
+        started = time.monotonic()
         try:
             with trace(
                 f"graph.{node_name}",
@@ -131,8 +137,18 @@ def _make_worker_node(
                 ),
                 at=datetime.now(UTC),
             )
-            return {"handoffs": [handoff], "done": True}
-        return {output_key: produced}
+            timing = WorkerTiming(
+                worker=node_name,
+                latency_ms=(time.monotonic() - started) * 1000.0,
+                success=False,
+            )
+            return {"handoffs": [handoff], "worker_latencies": [timing], "done": True}
+        timing = WorkerTiming(
+            worker=node_name,
+            latency_ms=(time.monotonic() - started) * 1000.0,
+            success=True,
+        )
+        return {output_key: produced, "worker_latencies": [timing]}
 
     return node
 

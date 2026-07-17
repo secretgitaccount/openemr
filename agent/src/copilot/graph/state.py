@@ -26,6 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 __all__ = [
     "Attachment",
     "Handoff",
+    "WorkerTiming",
     "GraphState",
     "GraphInput",
     "GraphResult",
@@ -89,13 +90,29 @@ class Handoff(BaseModel):
     at: datetime = Field(description="When the decision was made (UTC).")
 
 
+class WorkerTiming(BaseModel):
+    """Wall-clock latency + outcome of one worker-node invocation (FR-9).
+
+    Emitted by :func:`copilot.graph.workers._make_worker_node` around each worker
+    call so per-worker latency is reconstructable from state alone — the input to
+    the ``worker_latencies`` field of the per-encounter metrics. Purely structural
+    (node name, ms, success flag): never carries a clinical value. Frozen.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    worker: str = Field(description="Worker/node name (structural, non-clinical).")
+    latency_ms: float = Field(description="Wall-clock duration of the worker, ms.")
+    success: bool = Field(default=True, description="Whether the worker succeeded.")
+
+
 class GraphState(TypedDict):
     """LangGraph channel state threaded through the supervisor/worker graph.
 
-    ``handoffs`` accumulates (append reducer) so the full routing log survives
-    across super-steps; all other channels are last-write-wins. Carries the
-    ``correlation_id`` so every node/span can be tied back to the originating
-    request (NFR-2).
+    ``handoffs`` and ``worker_latencies`` accumulate (append reducer) so the full
+    routing log and per-worker timing survive across super-steps; all other
+    channels are last-write-wins. Carries the ``correlation_id`` so every
+    node/span can be tied back to the originating request (NFR-2).
     """
 
     correlation_id: str
@@ -105,6 +122,7 @@ class GraphState(TypedDict):
     extracted: list[Any]
     evidence: list[Any]
     handoffs: Annotated[list[Handoff], operator.add]
+    worker_latencies: Annotated[list[WorkerTiming], operator.add]
     done: bool
 
 
@@ -146,5 +164,9 @@ class GraphResult(BaseModel):
     extracted: list[Any] = Field(default_factory=list)
     evidence: list[Any] = Field(default_factory=list)
     handoffs: list[Handoff] = Field(default_factory=list)
+    worker_latencies: list[WorkerTiming] = Field(
+        default_factory=list,
+        description="Per-worker wall-clock latency + outcome (FR-9 observability).",
+    )
     done: bool = False
     steps: int = Field(default=0, description="Number of routing decisions made.")

@@ -16,13 +16,21 @@ Coverage (the PRP's validation gates):
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 
+import pytest
 from fastapi.testclient import TestClient
 
-from copilot.api.w2flow import get_answer_synthesizer, get_graph_runner
+from copilot.api.w2flow import (
+    build_encounter_metrics,
+    get_answer_synthesizer,
+    get_graph_runner,
+)
 from copilot.documents.ingest import IngestResult
 from copilot.documents.schemas import LabObservation, LabReport, SourceCitation
+from copilot.graph.answer import AnswerDiagnostics, build_answer
+from copilot.graph.state import Attachment, GraphInput
 from copilot.graph.supervisor import run_graph
 from copilot.main import app
 from copilot.rag.chunk import GuidelineChunk
@@ -315,3 +323,79 @@ def test_ask_returns_the_handoff_log() -> None:
         assert h["from_node"] == "supervisor"
         assert h["reason"]
         assert h["at"]
+
+
+# ---------------------------------------------------------------------------
+# Per-encounter observability metrics (FR-9): all seven signals populated
+# ---------------------------------------------------------------------------
+
+
+def test_build_encounter_metrics_populates_all_seven_signals() -> None:
+    """The metrics assembled from a real graph run + assembly carry every
+    required signal: tool sequence, step + per-worker latency, tokens/cost,
+    retrieval hits, extraction confidence, and the eval outcome."""
+
+    graph_input = GraphInput(
+        patient_id="pat-1",
+        question="Is the potassium level dangerous?",
+        attachments=[Attachment(file_path="/tmp/lab.pdf", doc_type="lab_pdf")],
+    )
+    result = _stub_runner(graph_input)
+    diagnostics = AnswerDiagnostics()
+    answer = asyncio.run(
+        build_answer(result, synthesize=_stub_synthesize, diagnostics=diagnostics)
+    )
+    metrics = build_encounter_metrics(
+        result,
+        answer,
+        diagnostics,
+        graph_latency_ms=1.0,
+        answer_latency_ms=2.0,
+        total_latency_ms=3.0,
+    )
+
+    # 1. tool sequence — the two workers, in supervisor-routed order (no 'done').
+    assert metrics.tool_sequence == ["intake_extractor", "evidence_retriever"]
+    assert metrics.routing_decisions[0] == "supervisor->intake_extractor"
+    assert metrics.steps == 3
+    # 2. latency by step + per-worker latency (both workers timed, non-negative).
+    assert [s.step for s in metrics.step_latencies] == ["graph_run", "answer_build"]
+    assert metrics.total_latency_ms == 3.0
+    assert {w.worker for w in metrics.worker_latencies} == {
+        "intake_extractor",
+        "evidence_retriever",
+    }
+    assert all(w.latency_ms >= 0.0 and w.success for w in metrics.worker_latencies)
+    # 3. token usage + cost — stub synthesizer => no live LLM => zero / None.
+    assert metrics.input_tokens == 0 and metrics.output_tokens == 0
+    assert metrics.cost_usd is None
+    # 4. retrieval hits — the one retrieved chunk was cited by a surviving claim.
+    assert metrics.retrieval_hit_rate == 1.0
+    # 5. extraction confidence — mean of the extracted lab report (0.9).
+    assert metrics.extraction_confidence == pytest.approx(0.9)
+    # 6. answer shape — one ungrounded claim dropped by the gate, two survived.
+    assert metrics.claims == 2
+    assert metrics.dropped_claims == 1
+    # 7. eval outcome — grounding held (claims survived) => pass.
+    assert metrics.eval_outcome == "pass"
+
+
+def test_ask_endpoint_emits_encounter_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Driving the HTTP endpoint emits exactly one per-encounter metrics event,
+    tagged with the patient + the routed tool sequence."""
+
+    captured: list[object] = []
+    monkeypatch.setattr(
+        "copilot.api.w2flow.record_encounter_metrics", lambda m: captured.append(m)
+    )
+
+    _ask()
+
+    assert len(captured) == 1
+    metrics = captured[0]
+    assert metrics.patient_id == "pat-1"
+    assert metrics.tool_sequence == ["intake_extractor", "evidence_retriever"]
+    assert metrics.steps == 3
+    assert metrics.claims == 2 and metrics.dropped_claims == 1
+    assert metrics.eval_outcome == "pass"
+    assert metrics.total_latency_ms is not None and metrics.total_latency_ms >= 0.0

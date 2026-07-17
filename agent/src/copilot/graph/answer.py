@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -51,9 +52,29 @@ from copilot.schemas.core import SourceRef
 from copilot.schemas.output import Claim, GroundedSummary
 from copilot.verification.gate import verify
 
-__all__ = ["W2Answer", "AnswerSynthesizer", "build_answer"]
+__all__ = ["W2Answer", "AnswerSynthesizer", "AnswerDiagnostics", "build_answer"]
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class AnswerDiagnostics:
+    """Mutable, PHI-free sink for per-encounter metrics gathered during assembly.
+
+    ``build_answer`` fills this (when one is passed) with the synthesis LLM's
+    token usage + model and the number of ungrounded claims the verification gate
+    dropped — the pieces the ``/ask`` endpoint needs to build ``EncounterMetrics``
+    (cost estimate, token totals, dropped-claim count) that are not otherwise
+    visible on the frozen :class:`W2Answer` response. Populated only on the
+    default LLM synthesis path; a stubbed synthesizer (tests) leaves the token
+    fields at zero. Kept out of :class:`W2Answer` so the response contract stays
+    exactly the clinician-facing shape.
+    """
+
+    model: str | None = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    dropped_claims: int = 0
 
 #: Output-token cap for the synthesis call (mirrors the Week-1 client headroom).
 _MAX_TOKENS = 16000
@@ -297,6 +318,7 @@ async def _llm_synthesize(
     guideline_evidence: list[SourceCitation],
     *,
     llm: LLMClient | None = None,
+    diagnostics: AnswerDiagnostics | None = None,
 ) -> GroundedSummary:
     """Synthesize the raw answer via the Week-1 Anthropic client (LIVE path).
 
@@ -337,6 +359,11 @@ async def _llm_synthesize(
             logger.warning("answer.synthesize.unparseable", model=model)
             raise LLMError("the model returned no parseable GroundedSummary.", retriable=False)
         span.update(metadata={"claims": len(summary.must_knows) + len(summary.whats_changed)})
+        if diagnostics is not None:
+            usage = getattr(message, "usage", None)
+            diagnostics.model = model
+            diagnostics.input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+            diagnostics.output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
         return summary
 
 
@@ -349,6 +376,7 @@ async def build_answer(
     result: GraphResult,
     *,
     synthesize: AnswerSynthesizer | None = None,
+    diagnostics: AnswerDiagnostics | None = None,
 ) -> W2Answer:
     """Assemble a verified :class:`W2Answer` from a PRP-09 :class:`GraphResult`.
 
@@ -358,19 +386,30 @@ async def build_answer(
     hallucinated claim is **dropped** before it can be surfaced. The returned
     answer carries only grounded claims — each with a citation resolvable to one
     of the two evidence lists — plus the caveats and the inspectable handoff log.
-    """
 
-    synthesize = synthesize or _llm_synthesize
+    When ``diagnostics`` is passed it is filled with the synthesis token usage +
+    model (default LLM path only) and the dropped-claim count, so the caller can
+    build per-encounter metrics without changing the frozen :class:`W2Answer`.
+    """
 
     record_facts = _record_facts(result.extracted)
     guideline_evidence = _guideline_evidence(result.evidence)
 
-    raw = await synthesize(result.question, record_facts, guideline_evidence)
+    # Default path threads the diagnostics sink so token usage is captured; an
+    # injected synthesizer (tests) keeps the narrower AnswerSynthesizer contract.
+    if synthesize is None:
+        raw = await _llm_synthesize(
+            result.question, record_facts, guideline_evidence, diagnostics=diagnostics
+        )
+    else:
+        raw = await synthesize(result.question, record_facts, guideline_evidence)
 
     grounding = _grounding_set(record_facts, guideline_evidence)
     verified = verify(raw, grounding)
 
     answer_claims = [*verified.summary.must_knows, *verified.summary.whats_changed]
+    if diagnostics is not None:
+        diagnostics.dropped_claims = len(verified.dropped)
     logger.info(
         "answer.assembled",
         record_facts=len(record_facts),
