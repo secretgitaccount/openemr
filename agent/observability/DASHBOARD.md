@@ -38,12 +38,22 @@ All observability is wired through `src/copilot/observability.py`:
 | `llm.followup` | `llm/client.py` | `model`, `success`, `duration_ms` |
 | `verify` | `verification/gate.py` | `resource_type`, `kept`, `dropped`, `flags`, `success`, `duration_ms` |
 
+#### Week-2 spans (multimodal / multi-agent flow)
+
+| Span | Source file | Metadata keys (scrubbed) |
+|------|-------------|--------------------------|
+| `graph.supervisor` | `graph/supervisor.py` | `patient_id`, `steps`, `tool_sequence`, `success`, `duration_ms` (root span of an `/ask` run) |
+| `graph.intake_extractor` | `graph/workers.py` (VLM extractor) | `patient_id`, `extraction_confidence`, `success`, `duration_ms` |
+| `graph.evidence_retriever` | `graph/workers.py` (RAG) | `patient_id`, `retrieval_hit_rate`, `success`, `duration_ms` |
+| `answer.synthesize` | `graph/answer.py` | `model`, `input_tokens`, `output_tokens`, `claims`, `dropped_claims`, `success`, `duration_ms` |
+
 ### Events emitted
 
 | Event | Source | Metadata keys (scrubbed) |
 |-------|--------|--------------------------|
 | `verification.pass` / `verification.fail` | `record_verification` ← `verification/gate.py` | `passed`, `kept`, `dropped`, `flags` |
 | `tool.success` / `tool.fail` | `record_tool_result` (helper in `observability.py`) | `tool`, `success` |
+| `encounter.metrics` (== structured log `w2flow.ask.metrics`) | `record_encounter_metrics` ← `observability.py`, one per `/ask` | `correlation_id`, `patient_id`, `tool_sequence`, `steps`, `total_latency_ms`, `input_tokens`, `output_tokens`, `cost_usd`, `retrieval_hit_rate`, `extraction_confidence`, `claims`, `dropped_claims`, `eval_outcome`, per-worker + per-step latency |
 
 ### Audit signals (structured logs, not Langfuse spans)
 
@@ -137,6 +147,59 @@ in the Governance row below.
   (`src/copilot/audit.py`, `openemr/roles.py`).
 - **Derivation:** count each event name over the window. Break-glass is the
   high-attention series (emitted at WARNING).
+
+### Row 5 — Week 2 (multimodal / multi-agent flow)
+
+Sourced from the per-encounter `encounter.metrics` event (== structured log
+`w2flow.ask.metrics`) and the Week-2 graph spans, all tagged with the run
+`correlation_id`.
+
+**Panel 5.1 · Per-encounter metrics**
+- **Metric:** cost and quality per `/ask` encounter.
+- **Source:** `encounter.metrics` event fields `cost_usd`, `total_latency_ms`,
+  `retrieval_hit_rate`, `extraction_confidence`, `eval_outcome`.
+- **Derivation:** time series of `avg`/`p95` of `cost_usd` and
+  `total_latency_ms`; `avg(retrieval_hit_rate)` and `avg(extraction_confidence)`
+  (extraction_confidence only on encounters that ingested a document); and a
+  breakdown of `eval_outcome` (pass/fail counts) over the window. A single-trace
+  drill-down by `correlation_id` shows one encounter's full field set.
+
+**Panel 5.2 · Supervisor routing decisions / tool sequence**
+- **Metric:** how the supervisor routed each encounter.
+- **Source:** `tool_sequence` and `steps` on the `graph.supervisor` root span
+  (and mirrored on `encounter.metrics`).
+- **Derivation:** count encounters grouped by distinct `tool_sequence` (e.g.
+  `supervisor→intake_extractor→evidence_retriever→done` vs
+  `supervisor→evidence_retriever→done`), stacked over time; plot `avg(steps)`.
+  Surfaces routing drift (e.g. attachments unexpectedly skipping extraction).
+
+**Panel 5.3 · Per-worker latency**
+- **Metric:** latency contribution of each graph worker.
+- **Source:** `metadata.duration_ms` on `graph.intake_extractor`,
+  `graph.evidence_retriever`, and `answer.synthesize` spans (and the per-worker
+  latency fields on `encounter.metrics`).
+- **Derivation:** `percentile(metadata.duration_ms, [50,95])` grouped by span
+  name. p95 of `graph.evidence_retriever` is the number the RAG-latency alert
+  (`alerts.yaml`) watches; `graph.intake_extractor` is the ingestion driver.
+
+**Panel 5.4 · Document ingestion count**
+- **Metric:** documents ingested (VLM extractions run).
+- **Source:** `graph.intake_extractor` spans (one per ingested document), split
+  by `metadata.success`.
+- **Derivation:** `count(graph.intake_extractor spans) group by success` over the
+  window, plus a failure-rate line = `count(success == false) / count(*)` — the
+  aggregate the extraction-failure alert watches.
+
+**Panel 5.5 · Eval pass/fail rate per category**
+- **Metric:** golden-set rubric health per category.
+- **Source:** the `golden_eval` report's per-category pass rates
+  (`schema_valid`, `citation_present`, `factually_consistent`, `safe_refusal`,
+  `no_phi_in_logs`); `eval_outcome` on `encounter.metrics` gives the live
+  per-encounter signal between eval runs.
+- **Derivation:** per category, `category_pass_rate` per eval run with the
+  committed baseline drawn as a reference line; highlight any category whose pass
+  rate falls >5% below baseline — the condition the eval-regression alert
+  (`alerts.yaml`) fires on. `no_phi_in_logs` is the high-attention series.
 
 ---
 

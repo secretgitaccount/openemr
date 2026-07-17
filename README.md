@@ -16,6 +16,25 @@
 
 [![Backers on Open Collective](https://opencollective.com/openemr/backers/badge.svg)](#backers) [![Sponsors on Open Collective](https://opencollective.com/openemr/sponsors/badge.svg)](#sponsors)
 
+---
+
+> ## 🩺 Clinical Co-Pilot (AgentForge Weeks 1–2)
+>
+> This fork hosts the **Clinical Co-Pilot** agent in [`agent/`](agent/) — a
+> separate Python/FastAPI service that gives an OpenEMR clinician grounded, cited
+> synthesis at the point of care. Everything below this block is upstream OpenEMR.
+>
+> - **Start here:** [`agent/README.md`](agent/README.md) — Week 1↔Week 2 separation,
+>   a runnable Week-2 quickstart, endpoints, and the deployed link.
+> - **Architecture:** [`ARCHITECTURE.md`](ARCHITECTURE.md) (Week 1) ·
+>   [`W2_ARCHITECTURE.md`](W2_ARCHITECTURE.md) (Week 2 multimodal + multi-agent).
+> - **Week 2 highlights:** VLM document extraction with a click-to-source PDF
+>   bounding-box overlay · LangGraph supervisor + 2 workers with a logged handoff
+>   log · hybrid BM25+FAISS RAG with cross-encoder rerank · a 50-case eval gate
+>   enforced by a PR-blocking git hook (`make ci`) · per-encounter observability.
+> - **Deployed:** <https://copilot-agent-production-daf5.up.railway.app>
+> - **Run the gate:** `make install-hooks && make ci` (from the repo root).
+
 # OpenEMR
 
 [OpenEMR](https://open-emr.org) is a Free and Open Source electronic health records and medical practice management application. It features fully integrated electronic health records, practice management, scheduling, electronic billing, internationalization, free support, a vibrant community, and a whole lot more. It runs on Windows, Linux, Mac OS X, and many other platforms.

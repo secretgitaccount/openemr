@@ -10,6 +10,19 @@
 #   events  : verification.pass / verification.fail
 #             tool.success / tool.fail
 #
+# Week-2 (multimodal / multi-agent) telemetry the W2 alerts below reference:
+#   spans   : graph.supervisor (root), graph.intake_extractor,
+#             graph.evidence_retriever, answer.synthesize
+#             (same metadata.success / metadata.duration_ms / level contract)
+#   event   : encounter.metrics (== structured log w2flow.ask.metrics), one per
+#             /ask encounter, fields: correlation_id, patient_id, tool_sequence,
+#             steps, total_latency_ms, input_tokens, output_tokens, cost_usd,
+#             retrieval_hit_rate, extraction_confidence, claims, dropped_claims,
+#             eval_outcome, plus per-worker + per-step latency
+#   eval    : golden_eval report — per-category rubric pass rates
+#             (schema_valid, citation_present, factually_consistent,
+#              safe_refusal, no_phi_in_logs)
+#
 # Thresholds are the starting SLO targets from PRD §13; tune after a week of
 # baseline data. Windows are rolling.
 
@@ -102,3 +115,80 @@ alerts:
     window: 1h
     for: 0m
     runbook: "RUNBOOK.md#break_glass_spike"
+
+  # ---------------------------------------------------------------------------
+  # Week 2 — multimodal / multi-agent alerts
+  # ---------------------------------------------------------------------------
+
+  # (6) [W2] Extraction failure rate — failed `intake_extractor` worker spans
+  #     (VLM call error, or a structured-extraction schema violation surfacing
+  #     as level == 'ERROR') over total extraction attempts.
+  #     Expected response: check RUNBOOK; a spike usually means the VLM is
+  #     returning malformed / off-schema output or timing out on large PDFs.
+  #     Triage the last failing correlation_ids, confirm the Anthropic key/model
+  #     and the extraction schema are unchanged, page-render the offending
+  #     document to see what the model was shown, and fall back to queued/manual
+  #     ingestion if the model is degraded so the answer path is not blocked.
+  - id: extraction_failure_rate_high
+    title: "intake_extractor extraction failure rate above budget"
+    severity: warning
+    source:
+      type: span
+      span: graph.intake_extractor
+      failure_predicate: "metadata.success == false OR level == 'ERROR'"
+    condition: "count(failure) / count(total) > threshold"
+    threshold_ratio: 0.10          # >10% of extraction attempts failing
+    window: 30m
+    for: 15m
+    min_sample: 5                  # ingestion is low-volume; small denominator
+    runbook: "RUNBOOK.md#extraction_failure_rate_high"
+
+  # (7) [W2] RAG retrieval latency — p95 of the `evidence_retriever` worker span
+  #     (BM25+FAISS → RRF → cross-encoder rerank). Warm baseline p95 ≈ 43 ms;
+  #     the threshold leaves headroom for jitter and flags real regression.
+  #     Expected response: check RUNBOOK; sustained breach usually means the
+  #     reranker/vector index is cold (verify /ready reports index+reranker
+  #     "loaded (warm)" and that the Dockerfile weight pre-fetch ran) or the
+  #     guideline corpus has grown — re-warm the process, gate traffic on /ready
+  #     until warm, and re-check corpus size / rerank batch settings.
+  - id: retrieval_p95_latency_high
+    title: "evidence_retriever (RAG) p95 latency over budget"
+    severity: warning
+    source:
+      type: span
+      span: graph.evidence_retriever
+      field: metadata.duration_ms
+    condition: "percentile(metadata.duration_ms, 95) > threshold"
+    threshold_ms: 1500             # warm p95 ≈ 43 ms; 1.5 s = cold/degraded
+    window: 15m
+    for: 10m
+    min_sample: 20
+    runbook: "RUNBOOK.md#retrieval_p95_latency_high"
+
+  # (8) [W2] Eval regression — a golden-set rubric category's pass rate drops
+  #     more than 5% (absolute) below its committed baseline, in any of
+  #     schema_valid / citation_present / factually_consistent / safe_refusal /
+  #     no_phi_in_logs.
+  #     Expected response: check RUNBOOK; treat as a release blocker. Diff the
+  #     failing category's cases against the baseline, bisect the offending
+  #     change (prompt, schema, retrieval corpus, model version), and either roll
+  #     back or re-baseline only after the category is intentionally re-approved.
+  #     A no_phi_in_logs drop is escalated immediately (potential PHI leak).
+  - id: eval_category_regression
+    title: "Golden-eval rubric category regressed >5%"
+    severity: critical
+    source:
+      type: eval
+      report: golden_eval
+      categories:
+        - schema_valid
+        - citation_present
+        - factually_consistent
+        - safe_refusal
+        - no_phi_in_logs
+      field: category_pass_rate
+    condition: "max(baseline_pass_rate - category_pass_rate) > threshold"
+    threshold_ratio: 0.05          # >5% absolute drop in any category
+    window: per-eval-run
+    for: 0m
+    runbook: "RUNBOOK.md#eval_category_regression"

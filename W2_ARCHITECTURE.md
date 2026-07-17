@@ -1,8 +1,9 @@
 # W2_ARCHITECTURE — Clinical Co-Pilot, Week 2
 
-> **Status:** planning seed (architecture defense). Sections marked _TBD_ are
-> filled in as each stage lands. Week 1 baseline lives in `./ARCHITECTURE.md`;
-> this document covers **only** the Week 2 multimodal + multi-agent additions.
+> **Status:** built. Every stage (ingestion, RAG, worker graph, eval gate,
+> observability) has landed and is reflected below. Week 1 baseline lives in
+> `./ARCHITECTURE.md`; this document covers **only** the Week 2 multimodal +
+> multi-agent additions. File/line references point at `agent/src/copilot/`.
 
 ## 1. Week 1 baseline vs. Week 2 additions
 
@@ -139,51 +140,97 @@ Pydantic v2 (strict contracts) · Langfuse (traces + eval dataset) · pytest
 check) · FastAPI auto-generated OpenAPI 3.0 · vanilla HTML/CSS UI · Railway +
 Docker.
 
-### 3.3 Open decisions
+### 3.3 Decisions (resolved)
 
-- **FAISS vs sqlite-vec** — leaning FAISS (simplicity); sqlite-vec if we want a
-  single backup-able index file for the backup/recovery eng-req. _TBD_
-- **Vision model** — Opus 4.8 (best extraction) vs Sonnet (cheaper/faster).
-  Cost report will decide. _TBD_
+- **FAISS vs sqlite-vec** — **FAISS** (`IndexFlatIP`, in-process). The corpus is
+  12 chunks and rebuilds in <1s, so a backup-able index file bought nothing; the
+  index is derived data, reproducible from the committed corpus (see
+  `BACKUP_RECOVERY.md`), so there is nothing to back up.
+- **Vision model** — **Opus 4.8** for extraction. The cost report
+  (`W2_COST_LATENCY.md`) shows ingestion is VLM-bound but dev spend is trivial
+  (~$0.38 total) and extraction accuracy matters more than latency for a
+  point-of-care read, so the more capable model wins.
 
-## 4. Document ingestion flow — _TBD (Stage 1)_
+## 4. Document ingestion flow
 
-`attach_and_extract(patient_id, file_path, doc_type)` for `lab_pdf` and
-`intake_form`: store source in OpenEMR → Claude vision → strict schema (schema
-is the source of truth; raw VLM output never bypasses validation) → persist
-derived facts as **OpenEMR records via REST** → link every fact to
+`attach_and_extract(patient_id, file_path, doc_type)` (`documents/ingest.py:131`)
+for `lab_pdf` and `intake_form`: store source in OpenEMR → Claude vision → strict
+schema (schema is the source of truth; raw VLM output never bypasses validation)
+→ persist derived facts as **OpenEMR records via REST** → link every fact to
 `{doc, page, field}`. **Write path (PRP-00 spike, resolved):** FHIR-native create
 is unavailable on this build, so the source PDF is stored via
-`POST /api/patient/:pid/document` and derived values as encounter/vital records,
-made idempotent by a source SHA-256 dedup key (spec allows "FHIR resources **or
-OpenEMR records**"). **Bounding-box strategy:** generate text-layer demo PDFs so
-`pdfplumber` yields exact word boxes; one document degraded to image-only to demo
-graceful extraction.
+`POST /api/patient/:pid/document` and derived values as encounter/vital records
+(`documents/openemr_write.py`), made idempotent by a source SHA-256 dedup key
+(spec allows "FHIR resources **or** OpenEMR records"). **Bounding-box strategy:**
+generate text-layer demo PDFs so `pdfplumber` yields exact word boxes
+(`extract.py:_find_box`); one document degraded to image-only to demo graceful
+page-level fallback.
 
-## 5. Worker graph — _TBD (Stage 3)_
+**Chart-read path (PRP-15/17):** the co-pilot also reads documents *already in
+the chart* that the front desk/nurse/portal uploaded — no physician upload. It
+lists via FHIR `DocumentReference`, fetches bytes via FHIR `Binary`, and reuses
+the same extract+persist pipeline (`documents/chart_read.py`), grounding every
+citation to the stable OpenEMR document id. This is the path `/ask` uses.
 
-One supervisor routing to `intake-extractor` and `evidence-retriever`; decides
-when extraction is needed, when evidence retrieval is needed, and when the
-answer is ready. Handoffs are explicit and logged; each worker span is a child
-of the supervisor span; correlation ID propagates from Week 1 middleware into
-every node, VLM call, retrieval call, and FHIR write.
+## 5. Worker graph
 
-## 6. RAG design — _TBD (Stage 2)_
+A LangGraph `StateGraph` (`graph/supervisor.py:build_graph`) with a **supervisor**
+node and two workers — `intake_extractor` and `evidence_retriever`. The
+load-bearing design choice: the supervisor never calls a worker directly. It
+writes its decision into the shared state as a `Handoff` record, and a
+conditional edge routes on the *last* handoff's `to_node` — so **the handoff log
+IS the routing instruction** (not a side-channel trace). `_decide`
+(`supervisor.py:70`) checks, in order: max-steps guard → attachments needing
+extraction → question needing evidence → else `done`. A typical run logs
+`supervisor→intake_extractor`, `supervisor→evidence_retriever`, `supervisor→done`
+and `steps == len(handoffs) == 3`.
 
-Small clinical-guideline corpus (ADA Standards of Care, ACC/AHA hypertension,
-USPSTF) matched to the demo panel's conditions. Hybrid retrieval: BM25 (sparse)
-+ FAISS (dense) candidates → local cross-encoder rerank → top-k evidence only
-to the answer model. Patient-record facts and guideline evidence are separated
-by **type** (distinct citation shapes), never merged.
+**Worker-failure containment (a QA-loop fix):** if a worker raises, the node does
+**not** propagate (`workers.py:_make_worker_node`). Propagating would destroy the
+inspectable handoff log and let a PHI-bearing exception message escape the
+scrubber. Instead it appends a terminal handoff naming only `type(exc).__name__`
+(never `str(exc)`), records the worker's timing, flips `done`, and routes to
+`END` so the failing worker isn't re-dispatched — the log survives intact.
 
-## 7. Eval gate — _TBD (Stage 4)_
+**Observability threading:** each worker span is a child of the single
+`graph.supervisor` span; the correlation ID propagates from the Week-1 middleware
+into every node, VLM call, retrieval call, and FHIR write (verified end-to-end).
+Every `/ask` run emits one PHI-free `EncounterMetrics` event
+(`api/w2flow.py:build_encounter_metrics` → `observability.record_encounter_metrics`)
+carrying all seven required signals — tool sequence, step + per-worker latency,
+token usage, cost estimate, retrieval hit-rate, extraction confidence, and the
+online eval outcome — plus a searchable `w2flow.ask.metrics` structured log line.
 
-50 synthetic/demo cases exercising extraction, evidence retrieval, citations,
-refusals, and missing-data behavior. Boolean rubrics only: `schema_valid`,
-`citation_present`, `factually_consistent`, `safe_refusal`, `no_phi_in_logs`.
-A PR-blocking git pre-push hook runs the suite and **fails the build if any
-category regresses >5% or drops below its pass threshold**. The golden set lives
-in the repo (reproducible without a database).
+## 6. RAG design
+
+Small clinical-guideline corpus (ADA Standards of Care 2025, 2017 ACC/AHA
+hypertension, USPSTF statin) matched to the demo panel's conditions — 3 markdown
+files, chunked **structurally** (one chunk per `##` section, 12 chunks total),
+each carrying its own citation metadata from YAML front-matter so *the chunk is
+the citable unit* (`rag/chunk.py`). Hybrid retrieval (`rag/retrieve.py:154`):
+BM25 (sparse, `rank-bm25`) + `bge-small-en-v1.5`→FAISS `IndexFlatIP` (dense)
+rankings → **Reciprocal Rank Fusion** (unweighted, `k=60`) → top-8 pool →
+`ms-marco-MiniLM-L-6-v2` cross-encoder rerank → **top-4** evidence only to the
+answer model. Patient-record facts and guideline evidence are separated by
+**type** (distinct citation shapes), never merged (FR-6). Note: retrieval always
+returns top-4 (no score cutoff); abstention is enforced downstream by the
+grounding gate and caveats-only synthesis, not by a retrieval threshold.
+
+## 7. Eval gate
+
+50 synthetic/demo cases (`agent/tests/eval/golden/cases/`: 15 extraction,
+10 evidence, 10 citation, 8 refusal, 7 missing-data) exercising extraction,
+evidence retrieval, citations, refusals, and missing-data behavior. Boolean
+rubrics only — five deterministic Python evaluators (`evals/w2_runner.py`), no
+LLM-as-judge: `schema_valid`, `citation_present`, `factually_consistent`,
+`safe_refusal`, `no_phi_in_logs`. The gate (`evals/gate.py`) **fails the build
+if any category regresses >5% absolute or drops below the 0.90 pass threshold**,
+comparing a fresh run against the committed `baseline.json`. It runs as step 3 of
+the PR-blocking `.githooks/pre-push` (and `make ci`); step 4 is a fail-closed
+PHI scan. The golden set + baseline live in the repo (reproducible without a
+database — see `BACKUP_RECOVERY.md`). Proven behavior: clean=green, injected
+regression=red-naming-the-category, planted PHI=red (`tests/test_eval_gate.py`,
+`tests/test_phi_check.py`).
 
 ## 8. Risks & tradeoffs
 
@@ -195,20 +242,61 @@ in the repo (reproducible without a database).
 | PyTorch bloats the Railway image | small model weights only; consider CPU-only wheels |
 | Multi-replica breaks in-memory graph/session state | documented single-instance constraint; shared store is hardening-tail work |
 
-## 9. Testing strategy — _TBD_
+## 9. Testing strategy
 
-- **Unit:** schema validators, tool functions, retrieval scoring.
-- **Integration (no live API):** full ingestion-to-answer path with fixture
-  documents + stubbed LLM/VLM responses.
-- **Golden set:** agent behavior (the 50 cases).
-- **Not tested / why:** _TBD._
+The suite is hermetic: `pytest -q` is green with **no docker, no API key, no
+network** (455 passed, 2 `live`-marked tests deselected by default via
+`addopts = -m "not live"`). Every LLM/VLM/OpenEMR call is stubbed through an
+injectable seam. Each layer guards a specific failure mode:
 
-Every test names the failure mode it guards against.
+| Layer | What it covers | Failure mode it guards against |
+|---|---|---|
+| **Unit** | schema validators (`test_document_schemas`, `test_clinical_schemas`), citation shape, retrieval scoring/fusion, PHI scanner (`test_phi_check`), cost estimator | a VLM field label / out-of-range confidence / missing citation slips through un-validated; a PHI pattern stops being detected |
+| **Contract** | supervisor↔worker routing + handoff log (`test_graph`), `/ask` response contract (`test_w2flow`), OpenAPI drift (`test_openapi_contract`) | a graph edit silently changes routing or drops the handoff log; the published API spec falls out of sync with the code |
+| **Integration (no live API)** | full ingestion→answer path with fixture docs + stubbed LLM/VLM (`test_m2_integration`, `test_ingest`, `test_orchestrator`) | a wiring regression between ingest → extract → persist → synthesize → gate that unit tests miss |
+| **Observability** | per-encounter metrics carry all 7 signals; `/ask` emits exactly one metrics event (`test_w2flow` metrics tests) | a metric silently stops being emitted (the core-#7 regression) |
+| **Golden set (behavior)** | the 50 boolean-rubric cases via the eval gate | extraction/citation/grounding/refusal/PHI behavior regresses >5% — the graded hard gate |
+| **Live (opt-in, `-m live`)** | `/ready` against the real local stack + reranker | the readiness probes misreport a genuinely-down dependency |
 
-## 10. Failure modes & recovery — _TBD_
+**Not tested, and why.** (1) The *live* Anthropic vision + synthesis calls are
+exercised only at the explicit LIVE smokes (PRP-06/14), never in CI — a real key
+costs money and makes CI non-deterministic; the schema gate + stubs cover the
+wiring, and the golden set covers behavior. (2) Load/throughput under concurrency
+is measured out-of-band (`loadtest/`), not asserted in unit CI, because it needs
+a running stack. (3) OpenEMR's own FHIR server is treated as a trusted external
+dependency (probed by `/ready`), not re-tested here.
 
-Document ingestion failure · extraction schema violation · RAG returns no
-results · supervisor routing error — each with "how to spot it in logs" +
-recovery action. _TBD as stages land._
-```
+## 10. Failure modes & recovery
+
+Each Week-2 failure mode, how to spot it in the structured logs (all searchable
+by `correlation_id`), and the recovery action:
+
+| Failure mode | How to identify (log signal) | Recovery action |
+|---|---|---|
+| **Document ingestion failure** (upload/store rejected) | `IngestError` / `FhirError` log event with the correlation id; `/ready` `document_storage` = `unreachable`/`degraded` | retry is automatic (tenacity) on transient 5xx; if persistent, check OpenEMR REST auth + the `document_storage` probe; source dedup key makes re-ingest idempotent (no duplicates) |
+| **Extraction schema violation** (VLM output fails the strict schema) | `answer.synthesize.unparseable` / `ExtractionError` (type only, no PHI); extraction confidence absent in `encounter.metrics` | fail-closed by design — the raw VLM output is rejected, never surfaced; re-run extraction; if repeatable, inspect the source scan quality (image-only → page-level citation fallback) |
+| **RAG returns no results** (retrieval empty / irrelevant) | `encounter.metrics.retrieval_hit_rate` low/`null`; answer emits caveats-only | not an error — the model abstains ("insufficient evidence") rather than guess; verify the corpus loaded via `/ready` `vector_index`; widen the query if a real gap |
+| **Supervisor routing error** (worker raises / loop) | terminal `Handoff` whose reason names the exception *type*; `worker_latencies[].success = false`; `steps` hits the max-steps guard | graph terminates cleanly with the handoff log intact and the grounded remainder stands; read the handoff log to see where it stopped; the `recursion_limit` backstops any loop |
+| **Reranker / vector index down** | `/ready` = `degraded` (200, not 503), names `reranker`/`vector_index` in `degraded[]` | non-gating — serving continues; reinstall/warm the model weights; retrieval degrades to fusion-only if the cross-encoder can't load |
+| **Eval regression** (a rubric category drops) | `make ci` / pre-push step 3 exits non-zero naming the category; monitoring alert on >5% drop | the push/PR is blocked before merge; fix the regression or, if intentional, regenerate the baseline with `make update-baseline` (reviewed) |
+
+## 11. Data model, authority, lineage & access control
+
+One source of truth per data type; no silent overwrites. Every Week-2 artifact:
+
+| Artifact | Authoritative owner | Lineage (where it comes from) | Access control | Validation |
+|---|---|---|---|---|
+| **Source document** (lab PDF / intake form) | **OpenEMR** (documents table) | front-desk/nurse/portal upload, or `attach_and_extract` upload | OpenEMR OAuth2/SMART scopes; agent reads with `user/DocumentReference.read` + `Binary.read`, panel + role gated | stored under a deterministic `copilot_<sha256>` filename; SHA dedup prevents duplicates |
+| **Extracted lab observation** | **OpenEMR** (encounter/vital record, written via REST) | VLM extraction of a source document, schema-validated | same OpenEMR scopes; write path is agent-only | `LabReport`/`LabObservation` Pydantic schema (`extra="forbid"`, `frozen`); confidence clamped by grounded fraction |
+| **Extracted intake fact** | **the source document** (OpenEMR) — stored, not re-persisted as a record | VLM extraction, schema-validated | OpenEMR scopes | `IntakeFacts` schema; each field carries its own `SourceCitation` |
+| **Guideline chunk** | **the repo** (`rag/corpus/*.md`) — committed, version-controlled | authored corpus + YAML front-matter | public guidance (no PHI); read-only at runtime | one `##` section per chunk; `GuidelineChunk` schema; deterministic `chunk_id` |
+| **Citation record** | **derived** (never authoritative on its own) | assembled from the above at answer time | inherits the source's access control | `SourceCitation` (5 required fields); record facts vs guideline evidence kept in distinct, never-merged lists |
+| **Per-encounter metrics** | **observability sink** (Langfuse + structured logs) | assembled at `/ask` time from graph result + answer | operational only; PHI-free by construction + `scrub_phi` defence-in-depth | `EncounterMetrics` schema (`extra="forbid"`); structural values only |
+
+**Schema evolution / migration:** Week 2 introduced **no database schema
+migration** — derived facts are written into *existing* OpenEMR tables via REST
+(document upload + encounter/vital records), and all new contracts
+(`LabReport`, `IntakeFacts`, `SourceCitation`, `GraphState`, `EncounterMetrics`)
+are additive Pydantic models with no change to any Week-1 schema. See
+`MIGRATIONS.md`.
 

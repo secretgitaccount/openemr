@@ -228,6 +228,295 @@
 					"response": []
 				}
 			]
+		},
+		{
+			"name": "Week 2",
+			"description": "Week-2 multimodal / multi-agent surface: grounded `/ask` (with optional document attachments), the chart-documents ingest + page-render endpoints, raw document upload, and the standalone page-preview tool.\n\nThese exercise the LangGraph supervisor flow (`supervisor → intake_extractor → evidence_retriever → answer → gate`). Each `/ask` run emits a per-encounter `w2flow.ask.metrics` log line / `encounter.metrics` Langfuse event (fields: `correlation_id`, `patient_id`, `tool_sequence`, `steps`, `total_latency_ms`, `input_tokens`, `output_tokens`, `cost_usd`, `retrieval_hit_rate`, `extraction_confidence`, `claims`, `dropped_claims`, `eval_outcome`, plus per-worker and per-step latency).\n\nReuses the shared `{{base_url}}` / `{{patient_id}}` / `{{provider_id}}` variables; `{{doc_id}}` and `{{page_num}}` drive the chart-document requests. The chart-documents list request captures the first document id into `{{doc_id}}` so the ingest and page requests chain.",
+			"item": [
+				{
+					"name": "Ask (with file attachment)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Provider-Id",
+								"value": "{{provider_id}}",
+								"description": "Acting provider identity (dev default `admin` if omitted)."
+							},
+							{
+								"key": "X-Break-Glass-Reason",
+								"value": "Local smoke test — Synthea patient has no schedule",
+								"description": "Break-glass justification. Required locally for the granted happy path; blank/absent means the normal gated path (refuses an out-of-panel patient)."
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"question\": \"What do this patient's latest labs show?\",\n    \"attachments\": [\n        {\n            \"file_path\": \"docs/fixtures/sample_lab.pdf\",\n            \"doc_type\": \"lab_pdf\"\n        }\n    ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/patients/{{patient_id}}/ask",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"patients",
+								"{{patient_id}}",
+								"ask"
+							]
+						},
+						"description": "Grounded multi-agent answer with a document attached by `file_path`. The supervisor routes the attachment to `intake_extractor` (VLM extraction of the lab PDF), then `evidence_retriever` for guideline grounding, then synthesis + the verification gate.\n\n`attachments[].doc_type` is `lab_pdf` or `intake_form`. Use a `file_path` the server process can read (or the `document_id` variant below to reference an already-uploaded chart document).\n\nEmits the `w2flow.ask.metrics` / `encounter.metrics` telemetry for the encounter (see the folder description)."
+					},
+					"response": []
+				},
+				{
+					"name": "Ask (with document_id attachment)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Provider-Id",
+								"value": "{{provider_id}}",
+								"description": "Acting provider identity (dev default `admin` if omitted)."
+							},
+							{
+								"key": "X-Break-Glass-Reason",
+								"value": "Local smoke test — Synthea patient has no schedule",
+								"description": "Break-glass justification. Required locally for the granted happy path; blank/absent means the normal gated path (refuses an out-of-panel patient)."
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"question\": \"Summarize the abnormal results in the attached lab.\",\n    \"attachments\": [\n        {\n            \"document_id\": \"{{doc_id}}\",\n            \"doc_type\": \"lab_pdf\"\n        }\n    ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/patients/{{patient_id}}/ask",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"patients",
+								"{{patient_id}}",
+								"ask"
+							]
+						},
+						"description": "Same grounded `/ask` flow, but the attachment references an existing chart document by `document_id` (`{{doc_id}}`, captured by the *Chart documents (list)* request) instead of a `file_path`. Use this when the document is already in the patient's chart rather than uploaded inline."
+					},
+					"response": []
+				},
+				{
+					"name": "Chart documents (list)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// Capture the first chart document's id into {{doc_id}} so the",
+									"// ingest and page-render requests below chain automatically.",
+									"let docId = null;",
+									"try {",
+									"    const data = pm.response.json();",
+									"    const list = Array.isArray(data) ? data",
+									"        : (data.documents || data.items || data.data || []);",
+									"    if (Array.isArray(list) && list.length) {",
+									"        const first = list[0];",
+									"        docId = first.document_id || first.doc_id || first.id;",
+									"    }",
+									"} catch (e) {",
+									"    // Non-JSON / error response — leave {{doc_id}} unchanged.",
+									"}",
+									"",
+									"if (docId) {",
+									"    pm.collectionVariables.set('doc_id', String(docId));",
+									"    console.log('Captured doc_id:', docId);",
+									"} else {",
+									"    console.log('No chart documents returned — set {{doc_id}} manually.');",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Provider-Id",
+								"value": "{{provider_id}}",
+								"description": "Acting provider identity (dev default `admin` if omitted)."
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/patients/{{patient_id}}/chart-documents",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"patients",
+								"{{patient_id}}",
+								"chart-documents"
+							]
+						},
+						"description": "Lists the patient's chart documents (uploaded/ingestible artifacts). The test script captures the first document's id into the `{{doc_id}}` collection variable so the ingest and page requests chain."
+					},
+					"response": []
+				},
+				{
+					"name": "Chart document — ingest",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-Provider-Id",
+								"value": "{{provider_id}}",
+								"description": "Acting provider identity (dev default `admin` if omitted)."
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/patients/{{patient_id}}/chart-documents/{{doc_id}}/ingest",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"patients",
+								"{{patient_id}}",
+								"chart-documents",
+								"{{doc_id}}",
+								"ingest"
+							]
+						},
+						"description": "Runs VLM extraction over the chart document `{{doc_id}}` and writes the idempotent structured records back to OpenEMR (the `intake_extractor` path, standalone). Ingestion is the dominant wall-clock cost of the flow (~20 s p50 for a multi-analyte lab PDF, Opus VLM-bound)."
+					},
+					"response": []
+				},
+				{
+					"name": "Chart document — render page",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Provider-Id",
+								"value": "{{provider_id}}",
+								"description": "Acting provider identity (dev default `admin` if omitted)."
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/patients/{{patient_id}}/chart-documents/{{doc_id}}/page/{{page_num}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"patients",
+								"{{patient_id}}",
+								"chart-documents",
+								"{{doc_id}}",
+								"page",
+								"{{page_num}}"
+							]
+						},
+						"description": "Renders page `{{page_num}}` (1-based) of chart document `{{doc_id}}` — the page image the VLM extractor sees. Useful for eyeballing what the model was shown for a given extraction."
+					},
+					"response": []
+				},
+				{
+					"name": "Documents — upload (multipart)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-Provider-Id",
+								"value": "{{provider_id}}",
+								"description": "Acting provider identity (dev default `admin` if omitted)."
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": [],
+									"description": "The document to upload (e.g. a scanned lab PDF). Pick a local file in the Postman form."
+								},
+								{
+									"key": "doc_type",
+									"value": "lab_pdf",
+									"type": "text",
+									"description": "One of `lab_pdf` | `intake_form`."
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/patients/{{patient_id}}/documents",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"patients",
+								"{{patient_id}}",
+								"documents"
+							]
+						},
+						"description": "Uploads a raw document for the patient via multipart form data, returning the created chart-document handle (which can then be listed, ingested, page-rendered, or referenced by `document_id` in `/ask`). Select a local file for the `file` form field in the Postman UI before sending."
+					},
+					"response": []
+				},
+				{
+					"name": "Preview — page",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Provider-Id",
+								"value": "{{provider_id}}",
+								"description": "Acting provider identity (dev default `admin` if omitted)."
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"file_path\": \"docs/fixtures/sample_lab.pdf\",\n    \"page\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/preview/page",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"preview",
+								"page"
+							]
+						},
+						"description": "Standalone page-preview tool: renders a single page of a document (by `file_path` + 1-based `page`) without attaching it to a patient chart. Handy for confirming a PDF renders and for previewing exactly what the VLM extractor will be shown before running an ingest."
+					},
+					"response": []
+				}
+			]
 		}
 	],
 	"variable": [
@@ -249,6 +538,16 @@
 		{
 			"key": "conversation_id",
 			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "doc_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "page_num",
+			"value": "1",
 			"type": "string"
 		}
 	]

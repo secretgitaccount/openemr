@@ -8,8 +8,8 @@ chain wired so you can exercise the multi-turn flow without reading any source.
 
 | File | Purpose |
 | --- | --- |
-| `clinical-copilot.postman_collection.json` | One request per endpoint, grouped into `health`, `summary`, `conversation`, `prewarm` folders. |
-| `clinical-copilot.postman_environment.json` | Local environment: `base_url`, `patient_id`, `provider_id` (and a `conversation_id` slot the chain fills in). |
+| `clinical-copilot.postman_collection.json` | One request per endpoint, grouped into `health`, `summary`, `conversation`, `prewarm`, and `Week 2` folders. |
+| `clinical-copilot.postman_environment.json` | Local environment: `base_url`, `patient_id`, `provider_id` (and `conversation_id`, `doc_id`, `page_num` slots the chains fill in). |
 
 ## Endpoints covered
 
@@ -21,6 +21,30 @@ chain wired so you can exercise the multi-turn flow without reading any source.
 | conversation | Start conversation | `POST /patients/{patient_id}/conversation` |
 | conversation | Send follow-up message | `POST /conversations/{conversation_id}/messages` |
 | prewarm | Prewarm today's schedule | `POST /prewarm` |
+| Week 2 | Ask (with file attachment) | `POST /patients/{patient_id}/ask` |
+| Week 2 | Ask (with document_id attachment) | `POST /patients/{patient_id}/ask` |
+| Week 2 | Chart documents (list) | `GET /patients/{patient_id}/chart-documents` |
+| Week 2 | Chart document — ingest | `POST /patients/{patient_id}/chart-documents/{doc_id}/ingest` |
+| Week 2 | Chart document — render page | `GET /patients/{patient_id}/chart-documents/{doc_id}/page/{n}` |
+| Week 2 | Documents — upload (multipart) | `POST /patients/{patient_id}/documents` |
+| Week 2 | Preview — page | `POST /preview/page` |
+
+### The Week 2 folder
+
+The **Week 2** folder covers the multimodal / multi-agent surface: the grounded
+`/ask` endpoint (with an attachment example by `file_path` and one by
+`document_id`), the chart-documents list / ingest / page-render endpoints, raw
+multipart document upload, and the standalone `/preview/page` tool. `/ask` runs
+the LangGraph supervisor flow (`supervisor → intake_extractor →
+evidence_retriever → answer → gate`) and emits a per-encounter
+`w2flow.ask.metrics` log line / `encounter.metrics` Langfuse event.
+
+Like the conversation chain, **Chart documents (list)** has a test script that
+captures the first document's id into the `{{doc_id}}` collection variable, so
+the ingest, page-render, and *Ask (with document_id attachment)* requests chain.
+`{{page_num}}` (default `1`) selects which page the render request returns. Some
+Week 2 requests need a running OpenEMR stack (and, for ingest/`ask`, an Anthropic
+key) to return real data.
 
 ## Import + run in the Postman app
 
